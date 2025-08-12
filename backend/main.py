@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 from typing import Optional
 import os, shutil
-from datetime import datetime
+from datetime import date
 
 # --- Models ___
 class Camp(SQLModel, table = True):
@@ -12,12 +12,12 @@ class Camp(SQLModel, table = True):
     name: str
 
 class Animal(SQLModel, table = True):
-    id: Optional[int] = Field(default - None, primary_key = True)
+    id: Optional[int] = Field(default = None, primary_key = True)
     name: str
     tag_number: Optional[str] = None
     birth_date: Optional[date] = None
     sex: Optional[str] = None
-    camp_id = Optional[int] = Field(default = None, foreign_key = "camp.id")
+    camp_id: Optional[int] = Field(default = None, foreign_key = "camp.id")
     photo_path = Optional[str] = None
     stats: Optional[str] = None
 
@@ -27,7 +27,12 @@ engine = create_engine("sqlite:///farm.db", echo = False)
 SQLModel.metadata.create_all(engine)
 
 app = FastAPI(title = "Mequatling")
-app.add_middleware(CORSMiddleware, allow_origins = ["*"], allow_methods = ["*"], allow_headers = ["*"])
+app.add_middleware(
+    CORSMiddleware, 
+    allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173", "*"], 
+    allow_methods = ["*"], 
+    allow_headers = ["*"]
+)
 
 app.mount("/uploads", StaticFiles(directory = "uploads"), name = "uploads")
 
