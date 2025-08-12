@@ -8,11 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "build-only": "vite build",
-    "type-check": "vue-tsc --build",
-    "format": "prettier --write src/"
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@mdi/font": "^7.4.47",

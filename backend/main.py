@@ -18,7 +18,7 @@ class Animal(SQLModel, table = True):
     birth_date: Optional[date] = None
     sex: Optional[str] = None
     camp_id: Optional[int] = Field(default = None, foreign_key = "camp.id")
-    photo_path = Optional[str] = None
+    photo_path: Optional[str] = None
     stats: Optional[str] = None
 
 # --- DB & app setup ---
@@ -67,3 +67,6 @@ async def upload_photo(animal_id:int, file: UploadFile = File(...), session: Ses
     session.commit()
     session.refresh(animal)
     return {"photo_url": animal.photo_path}
+
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
