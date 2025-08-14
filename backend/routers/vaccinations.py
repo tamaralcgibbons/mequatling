@@ -152,13 +152,14 @@ def vaccinate_animal(payload: AnimalVaccIn, db: Session = Depends(get_db)):
 
 @router.get("", response_model=List[VaccinationOut])
 def list_vaccinations(
-    db: Session = Depends(get_db)):
+    db: Session = Depends(get_db),
     group_id: Optional[int] = Query(None),
     vaccine_id: Optional[int] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
+):
 
     q_v = (
         select(Vaccination, Animal, Vaccine, Group, Camp)
