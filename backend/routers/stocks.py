@@ -1,17 +1,20 @@
-# backend/routers/stocks.py
-from typing import List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from datetime import datetime
+import json
 
-from backend.db import SessionLocal                 # ✅ correct import
-from backend.models.vaccine import Vaccine
+from backend.db import SessionLocal
+from backend.models.vaccine import Vaccine, VaccineWasteEvent
+from backend.models.feed import Feed, FeedEvent
+from backend.models.fertiliser import Fertiliser, FertiliserEvent
+from backend.models.fuel import Fuel, FuelEvent
+from backend.schemas.vaccine import VaccineCreate, VaccineEventIn
+from backend.schemas.feed import FeedCreate, FeedUpdate
+from backend.schemas.fertiliser import FertiliserCreate, FertiliserUpdate
+from backend.schemas.fuel import FuelCreate, FuelUpdate
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 
-# ---------- DB dependency ----------
 def get_db():
     db = SessionLocal()
     try:
@@ -19,83 +22,221 @@ def get_db():
     finally:
         db.close()
 
-# ---------- Schemas ----------
-class VaccineIn(BaseModel):
-    name: Optional[str] = None
-    default_dose: Optional[float] = None
-    unit: Optional[str] = None
-    methods: Optional[List[str]] = None
-    current_stock: Optional[float] = 0.0
-
-class VaccineOut(BaseModel):
-    # Pydantic v2 config
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    name: str
-    default_dose: Optional[float] = None
-    unit: Optional[str] = None
-    methods: List[str] = Field(default_factory=list)
-    current_stock: float = 0.0
-
-# ---------- Helpers ----------
-def _out(v: Vaccine) -> VaccineOut:
-    return VaccineOut(
-        id=v.id,
-        name=v.name,
-        default_dose=v.default_dose,
-        unit=v.unit,
-        methods=(v.methods or []),
-        current_stock=float(v.current_stock or 0),
-    )
-
-# ---------- Routes ----------
-@router.get("/vaccines", response_model=List[VaccineOut])
+# --- Vaccines ---
+@router.get("/vaccines")
 def list_vaccines(db: Session = Depends(get_db)):
-    rows = db.execute(select(Vaccine).order_by(Vaccine.id.desc())).scalars().all()
-    return [_out(v) for v in rows]
+    vaccines = db.query(Vaccine).order_by(Vaccine.name).all()
+    for v in vaccines:
+        v.methods = json.loads(v.methods) if v.methods else []
+    return vaccines
 
-@router.post("/vaccines", response_model=VaccineOut, status_code=status.HTTP_201_CREATED)
-def create_vaccine(payload: VaccineIn, db: Session = Depends(get_db)):
-    name = (payload.name or "").strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="Vaccine name is required")
-    v = Vaccine(
-        name=name,
-        default_dose=payload.default_dose,
-        unit=(payload.unit or None),
-        methods=(payload.methods or []),
-        current_stock=float(payload.current_stock or 0),
+@router.post("/vaccines")
+def create_vaccine(vaccine: VaccineCreate, db: Session = Depends(get_db)):
+    data = vaccine.dict()
+    data["methods"] = json.dumps(data["methods"])  # Serialize list to JSON string
+    obj = Vaccine(**data)
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    # Deserialize methods for output
+    obj.methods = json.loads(obj.methods) if obj.methods else []
+    return obj
+
+@router.post("/vaccines/{vaccine_id}/event")
+def record_vaccine_event(vaccine_id: int, event: VaccineEventIn, db: Session = Depends(get_db)):
+    vaccine = db.get(Vaccine, vaccine_id)
+    if not vaccine:
+        raise HTTPException(status_code=404, detail="Vaccine not found")
+    obj = VaccineEvent(**event.dict())
+    if event.event_type == "in":
+        vaccine.current_stock += event.amount
+    elif event.event_type == "out":
+        vaccine.current_stock -= event.amount
+    db.add(obj)
+    db.commit()
+    db.refresh(vaccine)
+    return {"ok": True, "current_stock": vaccine.current_stock}
+
+@router.post("/vaccines/{vaccine_id}/waste")
+def record_vaccine_waste(vaccine_id: int, amount: float, date: str, reason: str = "", db: Session = Depends(get_db)):
+    vaccine = db.get(Vaccine, vaccine_id)
+    if not vaccine:
+        raise HTTPException(status_code=404, detail="Vaccine not found")
+    waste_event = VaccineWasteEvent(
+        vaccine_id=vaccine_id,
+        amount=amount,
+        date=datetime.strptime(date, "%Y-%m-%d"),
+        reason=reason
     )
-    db.add(v)
+    vaccine.current_stock -= amount
+    db.add(waste_event)
     db.commit()
-    db.refresh(v)
-    return _out(v)
+    db.refresh(vaccine)
+    return {"ok": True, "current_stock": vaccine.current_stock}
 
-@router.patch("/vaccines/{vaccine_id}", response_model=VaccineOut)
-def update_vaccine(vaccine_id: int, payload: VaccineIn, db: Session = Depends(get_db)):
-    v = db.get(Vaccine, vaccine_id)
-    if not v:
-        raise HTTPException(status_code=404, detail="Vaccine not found")
-    if payload.name is not None:
-        v.name = (payload.name or "").strip() or v.name
-    if payload.default_dose is not None:
-        v.default_dose = payload.default_dose
-    if payload.unit is not None:
-        v.unit = (payload.unit or None)
-    if payload.methods is not None:
-        v.methods = payload.methods or []
-    if payload.current_stock is not None:
-        v.current_stock = float(payload.current_stock)
-    db.commit()
-    db.refresh(v)
-    return _out(v)
+# --- Feed ---
+@router.get("/feeds")
+def list_feeds(db: Session = Depends(get_db)):
+    return db.query(Feed).order_by(Feed.name).all()
 
-@router.delete("/vaccines/{vaccine_id}")
-def delete_vaccine(vaccine_id: int, db: Session = Depends(get_db)):
-    v = db.get(Vaccine, vaccine_id)
-    if not v:
-        raise HTTPException(status_code=404, detail="Vaccine not found")
-    db.delete(v)
+@router.post("/feeds", response_model=None)
+def create_feed(feed: FeedCreate, db: Session = Depends(get_db)):
+    obj = Feed(**feed.dict())
+    db.add(obj)
     db.commit()
-    return {"ok": True}
+    db.refresh(obj)
+    return obj
+
+@router.patch("/feeds/{feed_id}", response_model=None)
+def update_feed(feed_id: int, feed: FeedUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Feed, feed_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    for k, v in feed.dict(exclude_unset=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+@router.post("/feeds/{feed_id}/event")
+def record_feed_event(feed_id: int, event_type: str, amount: float, date: str, reason: str = "", db: Session = Depends(get_db)):
+    feed = db.get(Feed, feed_id)
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    event = FeedEvent(
+        feed_id=feed_id,
+        event_type=event_type,
+        amount=amount,
+        date=datetime.strptime(date, "%Y-%m-%d"),
+        reason=reason
+    )
+    if event_type == "in":
+        feed.current_stock += amount
+    elif event_type == "out":
+        feed.current_stock -= amount
+    db.add(event)
+    db.commit()
+    db.refresh(feed)
+    return {"ok": True, "current_stock": feed.current_stock}
+
+@router.post("/feeds/mix")
+def mix_feeds(components: dict, output_feed_id: int, output_amount: float, date: str, reason: str = "", db: Session = Depends(get_db)):
+    # components: {feed_id: amount}
+    for fid, amt in components.items():
+        feed = db.get(Feed, fid)
+        if not feed:
+            raise HTTPException(status_code=404, detail=f"Feed {fid} not found")
+        feed.current_stock -= amt
+        event = FeedEvent(
+            feed_id=fid,
+            event_type="mix",
+            amount=amt,
+            date=datetime.strptime(date, "%Y-%m-%d"),
+            reason=f"Used in mix for feed {output_feed_id}"
+        )
+        db.add(event)
+    output_feed = db.get(Feed, output_feed_id)
+    if not output_feed:
+        raise HTTPException(status_code=404, detail="Output feed not found")
+    output_feed.current_stock += output_amount
+    mix_event = FeedEvent(
+        feed_id=output_feed_id,
+        event_type="in",
+        amount=output_amount,
+        date=datetime.strptime(date, "%Y-%m-%d"),
+        reason=reason or "Feed mix"
+    )
+    db.add(mix_event)
+    db.commit()
+    db.refresh(output_feed)
+    return {"ok": True, "output_stock": output_feed.current_stock}
+
+# --- Fertiliser ---
+@router.get("/fertilisers")
+def list_fertilisers(db: Session = Depends(get_db)):
+    return db.query(Fertiliser).order_by(Fertiliser.name).all()
+
+@router.post("/fertilisers", response_model=None)
+def create_fertiliser(fert: FertiliserCreate, db: Session = Depends(get_db)):
+    obj = Fertiliser(**fert.dict())
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+@router.patch("/fertilisers/{fertiliser_id}", response_model=None)
+def update_fertiliser(fertiliser_id: int, fert: FertiliserUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Fertiliser, fertiliser_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Fertiliser not found")
+    for k, v in fert.dict(exclude_unset=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+@router.post("/fertilisers/{fertiliser_id}/event")
+def record_fertiliser_event(fertiliser_id: int, event_type: str, amount: float, date: str, reason: str = "", db: Session = Depends(get_db)):
+    fert = db.get(Fertiliser, fertiliser_id)
+    if not fert:
+        raise HTTPException(status_code=404, detail="Fertiliser not found")
+    event = FertiliserEvent(
+        fertiliser_id=fertiliser_id,
+        event_type=event_type,
+        amount=amount,
+        date=datetime.strptime(date, "%Y-%m-%d"),
+        reason=reason
+    )
+    if event_type == "in":
+        fert.current_stock += amount
+    elif event_type == "out":
+        fert.current_stock -= amount
+    db.add(event)
+    db.commit()
+    db.refresh(fert)
+    return {"ok": True, "current_stock": fert.current_stock}
+
+# --- Fuel ---
+@router.get("/fuels")
+def list_fuels(db: Session = Depends(get_db)):
+    return db.query(Fuel).order_by(Fuel.type).all()
+
+@router.post("/fuels", response_model=None)
+def create_fuel(fuel: FuelCreate, db: Session = Depends(get_db)):
+    obj = Fuel(**fuel.dict())
+    db.add(obj)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+@router.patch("/fuels/{fuel_id}", response_model=None)
+def update_fuel(fuel_id: int, fuel: FuelUpdate, db: Session = Depends(get_db)):
+    obj = db.get(Fuel, fuel_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Fuel not found")
+    for k, v in fuel.dict(exclude_unset=True).items():
+        setattr(obj, k, v)
+    db.commit()
+    db.refresh(obj)
+    return obj
+
+@router.post("/fuels/{fuel_id}/event")
+def record_fuel_event(fuel_id: int, event_type: str, amount: float, date: str, reason: str = "", db: Session = Depends(get_db)):
+    fuel = db.get(Fuel, fuel_id)
+    if not fuel:
+        raise HTTPException(status_code=404, detail="Fuel not found")
+    event = FuelEvent(
+        fuel_id=fuel_id,
+        event_type=event_type,
+        amount=amount,
+        date=datetime.strptime(date, "%Y-%m-%d"),
+        reason=reason
+    )
+    if event_type == "in":
+        fuel.current_stock += amount
+    elif event_type == "out":
+        fuel.current_stock -= amount
+    db.add(event)
+    db.commit()
+    db.refresh(fuel)
+    return {"ok": True, "current_stock": fuel.current_stock}
