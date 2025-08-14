@@ -1,15 +1,26 @@
-from typing import Optional
 from pydantic import BaseModel
+from typing import Optional
+from datetime import date
 
-
-class CampIn(BaseModel):
-    name: Optional[str] = None
-
-
-class CampOut(BaseModel):
-    id: int
+class CampBase(BaseModel):
     name: str
-    animal_count: int = 0
+    description: Optional[str] = None
+    greenfeed: Optional[bool] = False
+    greenfeed_planting_date: Optional[date] = None
+    greenfeed_amount: Optional[float] = None
+    fertilised_date: Optional[date] = None
+    fertilised_amount: Optional[float] = None
+    grazed_status: Optional[str] = "N"
+    grazed_out_date: Optional[date] = None
+
+class CampCreate(CampBase):
+    pass
+
+class CampUpdate(CampBase):
+    pass
+
+class CampOut(CampBase):
+    id: int
 
     class Config:
         orm_mode = True

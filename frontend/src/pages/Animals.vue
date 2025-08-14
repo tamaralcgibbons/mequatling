@@ -174,7 +174,16 @@ const animalsView = computed(() => {
         female_class: femaleClass(a),
       }))
       .filter(a => {
-        if (filterSex.value && (a.sex || '').toUpperCase() !== filterSex.value) return false
+        // Sex/Class filter logic
+        if (filterSex.value === 'F') {
+          if ((a.sex || '').toUpperCase() !== 'F') return false
+        } else if (filterSex.value === 'M') {
+          if ((a.sex || '').toUpperCase() !== 'M') return false
+        } else if (filterSex.value === 'heifer') {
+          if (a.female_class !== 'Heifer') return false
+        } else if (filterSex.value === 'cow') {
+          if (a.female_class !== 'Cow') return false
+        }
         if (filterCamp.value != null && a.camp_id !== filterCamp.value) return false
         if (filterGroup.value != null && a.group_id !== filterGroup.value) return false
         if (!needle) return true
@@ -615,26 +624,10 @@ onMounted(loadAll)
       </v-col>
     </v-row>
 
-    <!-- CAMPS OVERVIEW + GROUPS + CONTROLS -->
+    <!-- GROUPS + CONTROLS -->
     <v-row class="mb-4" align="stretch">
       <v-col cols="12" md="6">
         <v-card>
-          <v-card-title class="d-flex align-center">
-            <span>Camps Overview</span>
-            <v-spacer />
-            <v-btn variant="text" @click="loadAll" :loading="loading">Refresh</v-btn>
-          </v-card-title>
-          <v-card-text>
-            <v-data-table
-              :headers="[{ title:'Camp', value:'name' }, { title:'Animals', value:'animal_count' }]"
-              :items="camps.map(c => ({...c, animal_count: c.animal_count ?? animals.filter(a => a.camp_id === c.id && !a.deceased).length }))"
-              :items-per-page="8"
-              density="comfortable"
-            />
-          </v-card-text>
-        </v-card>
-
-        <v-card class="mt-4">
           <v-card-title class="d-flex align-center">
             <span>Groups</span>
             <v-spacer />
@@ -660,7 +653,14 @@ onMounted(loadAll)
               <v-btn size="small" variant="text" @click="openGroupMove(item)">Move to camp</v-btn>
             </template>
           </v-data-table>
+        </v-card>
 
+        <v-card class="mt-4">
+          <v-card-title>Vaccination Tools</v-card-title>
+          <v-card-text class="text-body-2">
+            Assign vaccinations to whole groups (date, dose per animal, method) from the Stocks list; stocks are adjusted on the backend.
+            You can also override or add an individual vaccination from the Animals table's “More” menu.
+          </v-card-text>
           <v-card-actions>
             <v-spacer />
             <v-btn variant="outlined" @click="openGroupVaccination">Record group vaccination</v-btn>
@@ -683,8 +683,14 @@ onMounted(loadAll)
               <v-col cols="6">
                 <v-select
                   v-model="filterSex"
-                  :items="[{title:'All', value:null},{title:'Female', value:'F'},{title:'Male', value:'M'}]"
-                  label="Sex"
+                  :items="[
+                    { title: 'All', value: null },
+                    { title: 'All Females', value: 'F' },
+                    { title: 'Heifers', value: 'heifer' },
+                    { title: 'Cows', value: 'cow' },
+                    { title: 'Bulls', value: 'M' }
+                  ]"
+                  label="Sex / Class"
                 />
               </v-col>
               <v-col cols="6">
@@ -710,18 +716,6 @@ onMounted(loadAll)
               </v-col>
             </v-row>
           </v-card-text>
-        </v-card>
-
-        <v-card class="mt-4">
-          <v-card-title>Vaccination Tools</v-card-title>
-          <v-card-text class="text-body-2">
-            Assign vaccinations to whole groups (date, dose per animal, method) from the Stocks list; stocks are adjusted on the backend.
-            You can also override or add an individual vaccination from the Animals table's “More” menu.
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn variant="outlined" @click="openGroupVaccination">Record group vaccination</v-btn>
-          </v-card-actions>
         </v-card>
       </v-col>
     </v-row>
@@ -772,9 +766,9 @@ onMounted(loadAll)
             style="max-width: 320px"
           />
           <v-btn class="mt-2"
-                 @click="uploadPhoto(item.id)"
-                 :loading="uploadingId === item.id"
-                 :disabled="!hasFile(item.id)">
+                @click="uploadPhoto(item.id)"
+                :loading="uploadingId === item.id"
+                :disabled="!hasFile(item.id)">
             Upload
           </v-btn>
         </template>
@@ -839,7 +833,7 @@ onMounted(loadAll)
 
               <!-- NEW: Calving / parity -->
               <v-col cols="12" v-if="showCalvingCreate">
-                <v-switch v-model="form.has_calved" label="Has had a calf (parity ≥ 1)" />
+                <v-switch v-model="form.has_calved" label="Has had a calf?" />
               </v-col>
 
               <template v-if="showCalvingCreate && form.has_calved">
