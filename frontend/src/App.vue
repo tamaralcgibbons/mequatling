@@ -1,19 +1,22 @@
 <template>
   <v-app>
-    <v-app-bar color="white" :height="96" elevation="2">
-        <v-container class="d-flex align-center">
-            <v-img src="/icon.ico" alt="Mequatling" max-height="56" max-width="56" class="mr-3" cover />
-            <v-app-bar-title class="text-h5" style="color:#B63400">MEQUATLING</v-app-bar-title>
-            <v-spacer />
-            <v-btn variant="text" color="primary" :to="{ name: 'dashboard' }">Dashboard</v-btn>
-            <v-btn variant="text" color="primary" :to="{ name: 'animals' }">Animals</v-btn>
-            <v-btn variant="text" color="primary" :to="{ name: 'camps' }">Camps</v-btn>
-            <v-btn variant="text" color="primary" :to="{ name: 'stocks' }">Stocks</v-btn>
-        </v-container>
+    <v-app-bar elevation="1">
+      <div class="d-flex align-center flex-grow-1">
+        <v-img src="/icon.ico" alt="Logo" contain max-width="60" max-height="60" class="mr-3 ml-2" />
+        <span style="color: #B63400; font-size: 2rem; font-weight: 300; white-space: nowrap;">
+          MEQUATLING
+        </span>
+      </div>
+      <v-spacer />
+      <v-btn :to="'/dashboard'" component="RouterLink">Dashboard</v-btn>
+      <v-btn :to="'/animals'" component="RouterLink">Animals</v-btn>
+      <v-btn :to="'/camps'" component="RouterLink">Camps</v-btn>
+      <v-btn :to="'/groups'" component="RouterLink">Groups</v-btn>
+      <v-btn :to="'/stocks'" component="RouterLink">Stocks</v-btn>
+      <v-btn :to="'/vaccinations-history'" component="RouterLink">Vaccinations</v-btn>
     </v-app-bar>
-
-    <v-main class="bg-white">
-      <RouterView />
+    <v-main>
+      <router-view />
     </v-main>
   </v-app>
 </template>

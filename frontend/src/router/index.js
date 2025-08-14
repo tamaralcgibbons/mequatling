@@ -1,18 +1,27 @@
+// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
 
-import Dashboard from '../pages/Dashboard.vue'
-import Animals from '../pages/Animals.vue'
-import Camps from '../pages/Camps.vue'
-import Stocks from '../pages/Stocks.vue'
+const Dashboard = () => import('../pages/Dashboard.vue')
+const Animals = () => import('../pages/Animals.vue')
+const Camps = () => import('../pages/Camps.vue')
+const Stocks = () => import('../pages/Stocks.vue')
+const Groups = () => import('../pages/Groups.vue')
+const VaccinationsHistory = () => import('../pages/VaccinationsHistory.vue')
 
 const routes = [
-  { path: '/', name: 'dashboard', component: Dashboard },
-  { path: '/animals', name: 'animals', component: Animals },
-  { path: '/camps', name: 'camps', component: Camps },
-  { path: '/stocks', name: 'stocks', component: Stocks },
+  { path: '/', redirect: '/dashboard' },
+  { path: '/dashboard', name: 'Dashboard', component: Dashboard },
+  { path: '/animals', name: 'Animals', component: Animals },
+  { path: '/camps', name: 'Camps', component: Camps },
+  { path: '/stocks', name: 'Stocks', component: Stocks },
+  { path: '/groups', name: 'Groups', component: Groups },
+  { path: '/vaccinations-history', name: 'VaccinationsHistory', component: VaccinationsHistory },
 ]
 
-export const router = createRouter({
-  history: createWebHistory(),
+const router = createRouter({
+  history: createWebHistory(), // ← robust for desktop/shortcut usage
   routes,
+  scrollBehavior: () => ({ top: 0 }),
 })
+
+export default router

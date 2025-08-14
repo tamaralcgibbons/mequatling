@@ -1,15 +1,22 @@
 <script setup>
-import axios from 'axios'
-import { ref, onMounted } from 'vue'
-
-const apiBase = import.meta?.env?.VITE_API_URL || window.location.origin
-const api = axios.create({ baseURL: apiBase })
+import { ref, onMounted, computed } from 'vue'
+import api from '@/lib/api' // shared axios instance
 
 const herd = ref({ total: 0, bulls: 0, cows: 0, heifers: 0, calves: 0, unknown: 0 })
 const camps = ref([])
 const stocks = ref({ totals_by_category: {}, low_stock: [], total_items: 0 })
 const loading = ref(true)
 const errorMsg = ref('')
+
+// ensure tables always receive arrays
+const asArray = (d) =>
+  Array.isArray(d) ? d :
+  Array.isArray(d?.data) ? d.data :
+  Array.isArray(d?.items) ? d.items :
+  Array.isArray(d?.results) ? d.results : []
+
+const campRows = computed(() => asArray(camps.value))
+const lowStockRows = computed(() => asArray(stocks.value?.low_stock))
 
 async function load() {
   loading.value = true
@@ -20,9 +27,14 @@ async function load() {
       api.get('/stats/camps-summary'),
       api.get('/stats/stocks-summary'),
     ])
-    herd.value = h.data
-    camps.value = c.data
-    stocks.value = s.data
+
+    herd.value = h.data ?? herd.value
+    camps.value = asArray(c.data)
+    stocks.value = {
+      totals_by_category: s.data?.totals_by_category ?? {},
+      low_stock: asArray(s.data?.low_stock),
+      total_items: s.data?.total_items ?? 0,
+    }
   } catch (e) {
     console.error(e)
     errorMsg.value = e?.message || 'Failed to load dashboard'
@@ -30,6 +42,7 @@ async function load() {
     loading.value = false
   }
 }
+
 onMounted(load)
 </script>
 
@@ -93,10 +106,10 @@ onMounted(load)
       </v-card-title>
       <v-data-table
         :headers="[
-          { title: 'Camp', value: 'name' },
-          { title: 'Animals', value: 'animal_count' }
+          { title: 'Camp', key: 'name' },
+          { title: 'Animals', key: 'animal_count' }
         ]"
-        :items="camps"
+        :items="campRows"
         :items-per-page="10"
         density="comfortable"
       />
@@ -121,17 +134,17 @@ onMounted(load)
           </v-chip>
         </div>
 
-        <div v-if="stocks.low_stock?.length">
+        <div v-if="lowStockRows.length">
           <div class="text-subtitle-1 mb-2">Low stock</div>
           <v-data-table
             :headers="[
-              { title: 'Item', value: 'name' },
-              { title: 'Category', value: 'category' },
-              { title: 'Qty', value: 'quantity' },
-              { title: 'Threshold', value: 'min_threshold' },
-              { title: 'Unit', value: 'unit' },
+              { title: 'Item', key: 'name' },
+              { title: 'Category', key: 'category' },
+              { title: 'Qty', key: 'quantity' },
+              { title: 'Threshold', key: 'min_threshold' },
+              { title: 'Unit', key: 'unit' },
             ]"
-            :items="stocks.low_stock"
+            :items="lowStockRows"
             :items-per-page="5"
             density="compact"
           />
