@@ -20,6 +20,7 @@ const form = ref({
   fertilised_amount: '',
   grazed_status: 'N',
   grazed_out_date: '',
+  notes: '',
 })
 
 const editOpen = ref(false)
@@ -34,6 +35,7 @@ const editForm = ref({
   fertilised_amount: '',
   grazed_status: 'N',
   grazed_out_date: '',
+  notes: '',
 })
 
 // delete
@@ -72,6 +74,7 @@ async function createCamp() {
       fertilised_amount: form.value.fertilised_amount ? Number(form.value.fertilised_amount) : null,
       grazed_status: form.value.grazed_status,
       grazed_out_date: form.value.grazed_status === 'Y' ? form.value.grazed_out_date || null : null,
+      notes: form.value.notes
     }
     if (!payload.name) throw new Error('Camp name is required')
     const { data } = await api.post('/camps/', payload)
@@ -85,6 +88,7 @@ async function createCamp() {
       fertilised_amount: '',
       grazed_status: 'N',
       grazed_out_date: '',
+      notes: '',
     }
     createOpen.value = false
   } catch (e) {
@@ -105,6 +109,7 @@ function openEdit(c) {
     fertilised_amount: c.fertilised_amount || '',
     grazed_status: c.grazed_status || 'N',
     grazed_out_date: c.grazed_out_date || '',
+    notes: c.notes || '',
   }
   editOpen.value = true
 }
@@ -122,6 +127,7 @@ async function saveEdit() {
       fertilised_amount: editForm.value.fertilised_amount ? Number(editForm.value.fertilised_amount) : null,
       grazed_status: editForm.value.grazed_status,
       grazed_out_date: editForm.value.grazed_status === 'Y' ? editForm.value.grazed_out_date || null : null,
+      notes: editForm.value.notes
     }
     const { data } = await api.patch(`/camps/${editing.value.id}`, payload)
     const idx = camps.value.findIndex(x => x.id === editing.value.id)
@@ -200,6 +206,7 @@ onMounted(loadAll)
           { title:'Fertilised Amount', value:'fertilised_amount' },
           { title:'Grazed Status', value:'grazed_status' },
           { title:'Grazed Out Date', value:'grazed_out_date' },
+          { title:'Notes', value:'notes' },
           { title:'Actions', value:'actions', sortable:false },
         ]"
         :items-per-page="30"
@@ -244,6 +251,7 @@ onMounted(loadAll)
               label="Grazed Status"
             />
             <v-text-field v-if="form.grazed_status === 'Y'" v-model="form.grazed_out_date" label="Grazed Out Date" type="date" />
+            <v-textarea v-model="form.notes" label="Notes" />
             <div class="d-flex justify-end mt-2">
               <v-btn variant="text" @click="createOpen=false">Cancel</v-btn>
               <v-btn type="submit" color="primary" :loading="creating">Create</v-btn>
@@ -277,6 +285,7 @@ onMounted(loadAll)
               label="Grazed Status"
             />
             <v-text-field v-if="editForm.grazed_status === 'Y'" v-model="editForm.grazed_out_date" label="Grazed Out Date" type="date" />
+            <v-textarea v-model="editForm.notes" label="Notes" />
             <div class="d-flex justify-end mt-2">
               <v-btn variant="text" @click="editOpen=false">Cancel</v-btn>
               <v-btn type="submit" color="primary" :loading="savingEdit">Save</v-btn>

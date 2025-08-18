@@ -1,0 +1,13 @@
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0015_add_notes_to_vaccine'
+down_revision = '0014_create_fuel_stocktake_events'  # Replace with your last migration's revision
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    op.add_column('vaccines', sa.Column('notes', sa.Text(), nullable=True))
+
+def downgrade():
+    op.drop_column('vaccines', 'notes')

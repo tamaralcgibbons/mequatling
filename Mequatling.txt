@@ -1,0 +1,12 @@
+@echo off
+:: Change to backend folder and start backend in a new terminal
+start "Backend" cmd /k "cd /d C:\Users\User\mequatling && uvicorn backend.main:app --reload --port 8001"
+
+:: Change to frontend folder and start frontend in a new terminal
+start "Frontend" cmd /k "cd /d C:\Users\User\mequatling\frontend && npm run dev"
+
+:: Wait a moment to give the servers time to start
+timeout /t 2 >nul
+
+:: Open the application in the default browser
+start "" http://localhost:5173

@@ -1,7 +1,6 @@
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, validator
 from datetime import datetime
-
 
 class GroupVaccIn(BaseModel):
     group_id: int
@@ -9,12 +8,14 @@ class GroupVaccIn(BaseModel):
     date: str                 # 'YYYY-MM-DD'
     dose_per_animal: float
     method: Optional[str] = None
+    notes: Optional[str] = None  # <-- Added notes
+    # Optionally allow per-animal dose overrides
+    animal_doses: Optional[Dict[int, float]] = None  # {animal_id: dose}
 
     @validator("date")
     def _vd(cls, v):
         datetime.strptime(v, "%Y-%m-%d")
         return v
-
 
 class AnimalVaccIn(BaseModel):
     animal_id: int
@@ -23,12 +24,12 @@ class AnimalVaccIn(BaseModel):
     dose: float
     method: Optional[str] = None
     source: Optional[str] = "manual"   # 'group' | 'manual'
+    notes: Optional[str] = None        # <-- Added notes
 
     @validator("date")
     def _vd(cls, v):
         datetime.strptime(v, "%Y-%m-%d")
         return v
-
 
 class VaccinationOut(BaseModel):
     id: int
@@ -48,6 +49,7 @@ class VaccinationOut(BaseModel):
     unit: Optional[str]
     method: Optional[str]
     source: Optional[str]
+    notes: Optional[str] = None  # <-- Added notes
 
     camp_id: Optional[int]
     camp_name: Optional[str]

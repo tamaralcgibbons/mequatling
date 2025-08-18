@@ -16,6 +16,7 @@ class Vaccine(Base):
     vaccinations = relationship("Vaccination", back_populates="vaccine", cascade="all, delete-orphan")
     events = relationship("VaccineEvent", back_populates="vaccine", cascade="all, delete-orphan")
     notes = Column(Text, nullable=True)
+    stocktakes = relationship("VaccineStocktakeEvent", back_populates="vaccine", cascade="all, delete-orphan")  # <-- Added
 
 class VaccineEvent(Base):
     __tablename__ = "vaccine_events"
@@ -37,3 +38,14 @@ class VaccineWasteEvent(Base):
     amount = Column(Float, nullable=False)
     date = Column(DateTime, nullable=False)
     reason = Column(Text, nullable=True)
+
+class VaccineStocktakeEvent(Base):
+    __tablename__ = "vaccine_stocktake_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vaccine_id = Column(Integer, ForeignKey("vaccines.id", ondelete="CASCADE"), nullable=False, index=True)
+    recorded_stock = Column(Float, nullable=False)  # The manually counted stock
+    date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    notes = Column(Text, nullable=True)
+
+    vaccine = relationship("Vaccine", back_populates="stocktakes")

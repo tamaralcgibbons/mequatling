@@ -7,14 +7,6 @@ const loading = ref(false)
 const errorMsg = ref('')
 
 const records = ref([])   // vaccination records
-/*
-  Expected shape per record (server-controlled):
-  {
-    id, date, animal_id, animal_tag, animal_name, group_id, group_name,
-    vaccine_id, vaccine_name, dose, method, unit, source, // source: 'group'|'manual'
-    camp_id, camp_name
-  }
-*/
 const groups = ref([])
 const vaccines = ref([])
 const animals = ref([]) // optional (used for dropdown of animals if needed)
@@ -25,7 +17,7 @@ const filterGroup = ref(null)     // group_id
 const filterVaccine = ref(null)   // vaccine_id
 const dateFrom = ref('')          // yyyy-mm-dd
 const dateTo = ref('')
-const source = ref(null)          // 'group' | 'manual' | null
+const source = ref('group')          // 'group' | 'manual' | null
 
 // Paging (client-side)
 const page = ref(1)
@@ -40,7 +32,6 @@ async function fetchVaccines() {
   const { data } = await api.get('/stocks/vaccines')
   vaccines.value = Array.isArray(data) ? data : []
 }
-// Optional, only if you want an animal dropdown; otherwise omit this call
 async function fetchAnimals() {
   const { data } = await api.get('/animals/')
   animals.value = Array.isArray(data) ? data : []
@@ -58,7 +49,7 @@ async function fetchHistory() {
     if (dateTo.value) params.date_to = dateTo.value
     if (source.value) params.source = source.value
     if (q.value?.trim()) params.q = q.value.trim()
-    const { data } = await api.get('/vaccinations', { params })
+    const { data } = await api.get('/vaccinations/', { params })
     records.value = Array.isArray(data) ? data : []
   } catch (e) {
     errorMsg.value = e?.response?.data?.detail || e.message || 'Failed to load vaccination history'
@@ -76,13 +67,12 @@ async function loadAll() {
 // Derived / table view
 const headers = [
   { title: 'Date', value: 'date' },
-  { title: 'Animal', value: 'animal' },
   { title: 'Group', value: 'group' },
   { title: 'Vaccine', value: 'vaccine' },
   { title: 'Dose', value: 'dose_display' },
   { title: 'Method', value: 'method' },
-  { title: 'Source', value: 'source' },
   { title: 'Camp', value: 'camp' },
+  { title: 'Notes', value: 'notes' },
 ]
 const tableItems = computed(() => {
   const needle = q.value.trim().toLowerCase()
@@ -96,6 +86,7 @@ const tableItems = computed(() => {
       vaccine: r.vaccine_name || '—',
       dose_display: r.dose != null ? `${r.dose}${r.unit ? ' ' + r.unit : ''}` : '—',
       camp: r.camp_name || '—',
+      notes: r.notes || '—', // <-- Map notes for display
       dateObj: r.date ? new Date(r.date) : null,
     }))
     .filter(r => (filterGroup.value ? r.group_id === filterGroup.value : true))
@@ -108,10 +99,15 @@ const tableItems = computed(() => {
       return (
         (r.animal || '').toLowerCase().includes(needle) ||
         (r.group || '').toLowerCase().includes(needle) ||
-        (r.vaccine || '').toLowerCase().includes(needle)
+        (r.vaccine || '').toLowerCase().includes(needle) ||
+        (r.notes || '').toLowerCase().includes(needle) // <-- Allow searching notes
       )
     })
 })
+
+const groupVaccinations = computed(() =>
+  allVaccinations.value.filter(v => v.source === 'group')
+)
 
 // Watch filters to refetch (if using server-side filtering)
 watch([filterGroup, filterVaccine, dateFrom, dateTo, source], fetchHistory)
@@ -137,7 +133,7 @@ onMounted(loadAll)
       <v-card-text>
         <v-row dense>
           <v-col cols="12" md="4">
-            <v-text-field v-model="q" label="Search (tag, name, vaccine)" />
+            <v-text-field v-model="q" label="Search (tag, name, vaccine, notes)" />
           </v-col>
           <v-col cols="12" md="4">
             <v-autocomplete
@@ -194,6 +190,9 @@ onMounted(loadAll)
           <v-chip size="small" :color="item.source === 'group' ? 'primary' : 'grey' " variant="flat">
             {{ item.source }}
           </v-chip>
+        </template>
+        <template #item.notes="{ item }">
+          <span>{{ item.notes }}</span>
         </template>
       </v-data-table>
     </v-card>

@@ -12,6 +12,7 @@ class CampBase(BaseModel):
     fertilised_amount: Optional[float] = None
     grazed_status: Optional[str] = "N"
     grazed_out_date: Optional[date] = None
+    notes: Optional[str] = None
 
 class CampCreate(CampBase):
     pass

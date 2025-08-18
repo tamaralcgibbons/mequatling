@@ -18,6 +18,11 @@ class AnimalIn(BaseModel):
     calves_count: Optional[int] = 0
     calves_tags: Optional[List[str]] = Field(default_factory=list)
 
+    # Pregnancy test fields
+    pregnant: Optional[bool] = None
+    pregnancy_duration: Optional[str] = None
+    pregnancy_date: Optional[str] = None
+
     @validator("sex")
     def _upper_sex(cls, v):
         return v.upper() if isinstance(v, str) else v
@@ -58,6 +63,11 @@ class AnimalOut(BaseModel):
     has_calved: bool
     calves_count: int
     calves_tags: List[str]
+
+    # Pregnancy test fields
+    pregnant: Optional[bool]
+    pregnancy_duration: Optional[str]
+    pregnancy_date: Optional[str]
 
     mother_id: Optional[int]
 

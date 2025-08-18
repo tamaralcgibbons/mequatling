@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from backend.db import SessionLocal             # ✅ correct import
 from backend.models.animal import Animal
+from backend.models.history import AnimalHistory
 
 MEDIA_PHOTOS_DIR = "backend/media/photos"
 os.makedirs(MEDIA_PHOTOS_DIR, exist_ok=True)
@@ -37,6 +38,11 @@ class AnimalIn(BaseModel):
     has_calved: Optional[bool] = False
     calves_count: Optional[int] = 0
     calves_tags: Optional[List[str]] = Field(default_factory=list)
+    current_weight: Optional[float] = None
+    weight_date: Optional[str] = None  # 'YYYY-MM-DD'
+    pregnant: Optional[bool] = None
+    pregnancy_duration: Optional[str] = None
+    pregnancy_date: Optional[str] = None
 
     @field_validator("sex", mode="before")
     @classmethod
@@ -85,10 +91,16 @@ class AnimalOut(BaseModel):
     calves_count: int
     calves_tags: List[str]
     mother_id: Optional[int] = None
+    current_weight: Optional[float]
+    weight_date: Optional[str]
+    pregnant: Optional[bool]
+    pregnancy_duration: Optional[str]
+    pregnancy_date: Optional[str]
 
 class DeceasedIn(BaseModel):
     killed: Optional[bool] = False
     reason: Optional[str] = None
+    date: Optional[str] = None
 
 # ---------- Helpers ----------
 def parse_date_str(s: Optional[str]):
@@ -97,19 +109,40 @@ def parse_date_str(s: Optional[str]):
     return datetime.strptime(s, "%Y-%m-%d").date()
 
 def _apply_incoming(a: Animal, payload: AnimalIn):
-    a.tag_number = payload.tag_number
-    a.name = payload.name
-    a.sex = payload.sex
-    a.birth_date = parse_date_str(payload.birth_date)
-    a.pregnancy_status = payload.pregnancy_status
-    a.camp_id = payload.camp_id
-    a.group_id = payload.group_id
-    a.notes = payload.notes
+    if payload.tag_number is not None:
+        a.tag_number = payload.tag_number
+    if payload.name is not None:
+        a.name = payload.name
+    if payload.sex is not None:
+        a.sex = payload.sex
+    if payload.birth_date is not None:
+        a.birth_date = parse_date_str(payload.birth_date)
+    if payload.pregnancy_status is not None:
+        a.pregnancy_status = payload.pregnancy_status
+    if payload.camp_id is not None:
+        a.camp_id = payload.camp_id
+    if payload.group_id is not None:
+        a.group_id = payload.group_id
+    if payload.notes is not None:
+        a.notes = payload.notes
+    if payload.current_weight is not None:
+        a.current_weight = payload.current_weight
+    if payload.weight_date is not None:
+        a.weight_date = parse_date_str(payload.weight_date)
+    if payload.pregnant is not None:
+        a.pregnant = payload.pregnant
+    if payload.pregnancy_duration is not None:
+        a.pregnancy_duration = payload.pregnancy_duration
+    if payload.pregnancy_date is not None:
+        a.pregnancy_date = parse_date_str(payload.pregnancy_date)
 
     # Parity
-    a.has_calved = bool(payload.has_calved)
-    a.calves_count = int(payload.calves_count or 0)
-    a.calves_tags = list(payload.calves_tags or [])
+    if payload.has_calved is not None:
+        a.has_calved = bool(payload.has_calved)
+    if payload.calves_count is not None:
+        a.calves_count = int(payload.calves_count or 0)
+    if payload.calves_tags is not None:
+        a.calves_tags = list(payload.calves_tags or [])
     a.touch()
 
 def _link_mother_to_calves(db: Session, mother: Animal):
@@ -150,6 +183,11 @@ def _serialize(a: Animal) -> dict:
         "mother_id": getattr(a, "mother_id", None),
         "created_at": a.created_at,
         "updated_at": a.updated_at,
+        "current_weight": a.current_weight,
+        "weight_date": a.weight_date.isoformat() if a.weight_date else None,
+        "pregnant": a.pregnant,
+        "pregnancy_duration": a.pregnancy_duration,
+        "pregnancy_date": a.pregnancy_date.isoformat() if a.pregnancy_date else None,
     }
 
 # ---------- Routes ----------
@@ -203,6 +241,23 @@ def mark_deceased(animal_id: int, payload: DeceasedIn, db: Session = Depends(get
     a.death_reason = (payload.reason or "").strip() or None
     a.touch()
     db.commit()
+
+    # Record history event
+    event_type = "slaughtered" if a.killed else "deceased"
+    event_date = datetime.utcnow().date()
+    try:
+        if hasattr(payload, "date") and payload.date:
+            event_date = parse_date_str(payload.date)
+    except Exception:
+        pass
+    history = AnimalHistory(
+        animal_id=a.id,
+        event_type=event_type,
+        event_date=event_date,
+        reason=a.death_reason,
+    )
+    db.add(history)
+    db.commit()
     return {"ok": True}
 
 @router.delete("/{animal_id}")
@@ -237,3 +292,17 @@ def upload_photo(animal_id: int, file: UploadFile = File(...), db: Session = Dep
     db.commit()
     db.refresh(a)
     return {"photo_path": a.photo_path}
+
+@router.get("/{animal_id}/history")
+def get_animal_history(animal_id: int, db: Session = Depends(get_db)):
+    rows = db.execute(
+        select(AnimalHistory).where(AnimalHistory.animal_id == animal_id).order_by(AnimalHistory.event_date.desc())
+    ).scalars().all()
+    return [
+        {
+            "event_type": h.event_type,
+            "event_date": h.event_date.isoformat(),
+            "reason": h.reason,
+        }
+        for h in rows
+    ]

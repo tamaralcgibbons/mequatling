@@ -34,3 +34,16 @@ class FeedEventOut(FeedEventBase):
 
     class Config:
         orm_mode = True
+
+# --- Feed Stocktake Event schemas ---
+class FeedStocktakeEventIn(BaseModel):
+    feed_id: int
+    recorded_stock: float
+    date: datetime
+    notes: Optional[str] = None
+
+class FeedStocktakeEventOut(FeedStocktakeEventIn):
+    id: int
+
+    class Config:
+        orm_mode = True

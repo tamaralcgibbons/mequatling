@@ -14,6 +14,7 @@
       <v-btn :to="'/groups'" component="RouterLink">Groups</v-btn>
       <v-btn :to="'/stocks'" component="RouterLink">Stocks</v-btn>
       <v-btn :to="'/vaccinations-history'" component="RouterLink">Vaccinations</v-btn>
+      <v-btn to="/history" variant="text">History</v-btn>
     </v-app-bar>
     <v-main>
       <router-view />

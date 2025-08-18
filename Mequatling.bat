@@ -1,10 +1,12 @@
 @echo off
-set PROJECT=C:\Users\User\mequatling
-set HOST=127.0.0.1
-set PORT=8001
+:: Change to backend folder and start backend in a new terminal
+start "Backend" cmd /k "cd /d C:\Users\User\mequatling && call .venv\Scripts\activate && uvicorn backend.main:app --reload --port 8001"
 
-pushd "%PROJECT%"
-start "Mequatling Backend" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host %HOST% --port %PORT%"
-timeout /t 2 /nobreak >nul
-start "" "http://%HOST%:%PORT%"
-popd
+:: Change to frontend folder and start frontend in a new terminal
+start "Frontend" cmd /k "cd /d C:\Users\User\mequatling\frontend && npm run dev"
+
+:: Wait a moment to give the servers time to start
+timeout /t 2 >nul
+
+:: Open the application in the default browser
+start "" http://localhost:5173

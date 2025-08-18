@@ -31,6 +31,7 @@ class CampIn(BaseModel):
     fertilised_amount: Optional[float] = None
     grazed_status: Optional[str] = "N"
     grazed_out_date: Optional[str] = None
+    notes: Optional[str] = None
 
 class CampOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -45,6 +46,7 @@ class CampOut(BaseModel):
     grazed_status: Optional[str] = "N"
     grazed_out_date: Optional[str] = None
     animal_count: int = 0
+    notes: Optional[str] = None
 
 # ---------- Helpers ----------
 def _count_animals_in_camp(db: Session, camp_id: int) -> int:
@@ -81,7 +83,8 @@ def _out(db: Session, c: Camp) -> CampOut:
         fertilised_amount=getattr(c, "fertilised_amount", None),
         grazed_status=getattr(c, "grazed_status", "N"),
         grazed_out_date=str(getattr(c, "grazed_out_date", "")) if getattr(c, "grazed_out_date", None) else None,
-        animal_count=_count_animals_in_camp(db, c.id)
+        animal_count=_count_animals_in_camp(db, c.id),
+        notes=getattr(c, "notes", None)
     )
 
 # ---------- Routes ----------
@@ -108,6 +111,7 @@ def list_camps(db: Session = Depends(get_db)):
             "grazed_status": getattr(c, "grazed_status", "N"),
             "grazed_out_date": str(getattr(c, "grazed_out_date", "")) if getattr(c, "grazed_out_date", None) else None,
             "animal_count": int(counts.get(c.id, 0)),
+            "notes": getattr(c, "notes", None),
         }
         for c in camps
     ]
@@ -127,6 +131,7 @@ def create_camp(payload: CampIn, db: Session = Depends(get_db)):
         fertilised_amount=payload.fertilised_amount,
         grazed_status=payload.grazed_status,
         grazed_out_date=_parse_date(payload.grazed_out_date),
+        notes=payload.notes,
     )
     db.add(c)
     db.commit()
@@ -158,6 +163,8 @@ def update_camp(camp_id: int, payload: CampIn, db: Session = Depends(get_db)):
         c.grazed_status = payload.grazed_status
     if payload.grazed_out_date is not None:
         c.grazed_out_date = _parse_date(payload.grazed_out_date)
+    if payload.notes is not None:
+        c.notes = payload.notes
     db.commit()
     db.refresh(c)
     return _out(db, c)

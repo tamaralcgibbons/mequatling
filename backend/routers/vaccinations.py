@@ -7,14 +7,14 @@ from pydantic import BaseModel, field_validator, ConfigDict
 from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
 
-from backend.db import SessionLocal                    # ✅ correct import
+from backend.db import SessionLocal
 from backend.models.vaccination import Vaccination
 from backend.models.vaccine import Vaccine
 from backend.models.animal import Animal
 from backend.models.group import Group
 from backend.models.camp import Camp
 
-router = APIRouter(prefix="/vaccinations", tags=["vaccinations"])
+router = APIRouter(tags=["vaccinations"])
 
 # ---------- DB dependency ----------
 def get_db():
@@ -31,6 +31,8 @@ class GroupVaccIn(BaseModel):
     date: str
     dose_per_animal: float
     method: Optional[str] = None
+    notes: Optional[str] = None
+    animal_doses: Optional[dict[int, float]] = None  # {animal_id: dose}
 
     @field_validator("date")
     @classmethod
@@ -45,6 +47,7 @@ class AnimalVaccIn(BaseModel):
     dose: float
     method: Optional[str] = None
     source: Optional[str] = "manual"  # 'group' | 'manual'
+    notes: Optional[str] = None
 
     @field_validator("date")
     @classmethod
@@ -53,7 +56,6 @@ class AnimalVaccIn(BaseModel):
         return v
 
 class VaccinationOut(BaseModel):
-    # We construct this manually, so no need for from_attributes
     id: int
     date: Optional[str]
     animal_id: int
@@ -67,6 +69,7 @@ class VaccinationOut(BaseModel):
     unit: Optional[str]
     method: Optional[str]
     source: Optional[str]
+    notes: Optional[str] = None
     camp_id: Optional[int]
     camp_name: Optional[str]
 
@@ -98,25 +101,34 @@ def vaccinate_group(payload: GroupVaccIn, db: Session = Depends(get_db)):
 
     # current members at time of recording (exclude deceased)
     members = db.execute(
-        select(Animal).where(Animal.group_id == g.id, Animal.deceased == False)  # noqa: E712
+        select(Animal).where(Animal.group_id == g.id, Animal.deceased == False)
     ).scalars().all()
     if not members:
         return {"ok": True, "applied": 0}
 
     # write one vaccination per member
     for a in members:
+        actual_dose = dose
+        if payload.animal_doses and a.id in payload.animal_doses:
+            actual_dose = float(payload.animal_doses[a.id])
         rec = Vaccination(
             animal_id=a.id,
             vaccine_id=vax.id,
+            group_id=g.id,
             date=vacc_date,
-            dose=dose,
+            dose=actual_dose,
             method=payload.method,
             source="group",
+            notes=payload.notes,
         )
         db.add(rec)
 
     # decrement stock
-    _dec_stock(vax, dose * len(members))
+    total_dose = sum(
+        float(payload.animal_doses[a.id]) if payload.animal_doses and a.id in payload.animal_doses else dose
+        for a in members
+    )
+    _dec_stock(vax, total_dose)
     db.commit()
     return {"ok": True, "applied": len(members), "stock": vax.current_stock}
 
@@ -140,6 +152,7 @@ def vaccinate_animal(payload: AnimalVaccIn, db: Session = Depends(get_db)):
         dose=dose,
         method=payload.method,
         source=payload.source or "manual",
+        notes=payload.notes,
     )
     db.add(rec)
 
@@ -150,11 +163,21 @@ def vaccinate_animal(payload: AnimalVaccIn, db: Session = Depends(get_db)):
     db.commit()
     return {"ok": True, "stock": vax.current_stock}
 
-@router.get("", response_model=List[VaccinationOut])
+@router.delete("/{vaccination_id}", status_code=status.HTTP_200_OK)
+def delete_vaccination(vaccination_id: int, db: Session = Depends(get_db)):
+    rec = db.get(Vaccination, vaccination_id)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Vaccination not found")
+    db.delete(rec)
+    db.commit()
+    return {"ok": True}
+
+@router.get("/", response_model=List[VaccinationOut])
 def list_vaccinations(
     db: Session = Depends(get_db),
     group_id: Optional[int] = Query(None),
     vaccine_id: Optional[int] = Query(None),
+    animal_id: Optional[int] = Query(None),
     date_from: Optional[str] = Query(None),
     date_to: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
@@ -165,7 +188,7 @@ def list_vaccinations(
         select(Vaccination, Animal, Vaccine, Group, Camp)
         .join(Animal, Vaccination.animal_id == Animal.id)
         .join(Vaccine, Vaccination.vaccine_id == Vaccine.id)
-        .outerjoin(Group, Animal.group_id == Group.id)
+        .outerjoin(Group, Vaccination.group_id == Group.id)
         .outerjoin(Camp, Animal.camp_id == Camp.id)
     )
 
@@ -174,6 +197,8 @@ def list_vaccinations(
         conditions.append(Group.id == group_id)
     if vaccine_id is not None:
         conditions.append(Vaccination.vaccine_id == vaccine_id)
+    if animal_id is not None:
+        conditions.append(Vaccination.animal_id == animal_id)
     if date_from:
         conditions.append(Vaccination.date >= _parse_date(date_from))
     if date_to:
@@ -202,9 +227,10 @@ def list_vaccinations(
                 vaccine_id=v.id,
                 vaccine_name=v.name,
                 dose=float(vrec.dose or 0),
-                unit=v.unit,
+                unit=getattr(v, "unit", None),
                 method=vrec.method,
                 source=vrec.source,
+                notes=getattr(vrec, "notes", None),
                 camp_id=(c.id if c else None),
                 camp_name=(c.name if c else None),
             )

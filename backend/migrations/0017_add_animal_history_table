@@ -1,0 +1,26 @@
+from sqlalchemy import Column, Integer, String, Date, ForeignKey, Table, MetaData
+
+revision = '0017_add_animal_history_table'
+down_revision = '0016_add_weights_table'
+branch_labels = None
+depends_on = None
+
+def upgrade(migrate_engine):
+    meta = MetaData(bind=migrate_engine)
+    meta.reflect()
+
+    animal_history = Table(
+        "animal_history", meta,
+        Column("id", Integer, primary_key=True, index=True),
+        Column("animal_id", Integer, ForeignKey("animal.id"), nullable=False),
+        Column("event_type", String(32), nullable=False),
+        Column("event_date", Date, nullable=False),
+        Column("reason", String(256), nullable=True),
+    )
+    animal_history.create()
+
+def downgrade(migrate_engine):
+    meta = MetaData(bind=migrate_engine)
+    meta.reflect()
+    animal_history = Table("animal_history", meta, autoload_with=migrate_engine)
+    animal_history.drop()

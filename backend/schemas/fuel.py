@@ -32,3 +32,16 @@ class FuelEventOut(FuelEventBase):
 
     class Config:
         orm_mode = True
+
+# --- Fuel Stocktake Event schemas ---
+class FuelStocktakeEventIn(BaseModel):
+    fuel_id: int
+    recorded_stock: float
+    date: datetime
+    notes: Optional[str] = None
+
+class FuelStocktakeEventOut(FuelStocktakeEventIn):
+    id: int
+
+    class Config:
+        orm_mode = True

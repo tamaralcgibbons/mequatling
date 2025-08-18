@@ -17,6 +17,7 @@ const form = ref({
   unit: '',
   methods: [],
   current_stock: null,
+  notes: '',
 })
 
 // For dropdown logic
@@ -33,6 +34,7 @@ const editForm = ref({
   unit: '',
   methods: [],
   current_stock: null,
+  notes: '',
 })
 
 const confirmDelete = ref(false)
@@ -67,7 +69,7 @@ async function createVaccine() {
     }
     const { data } = await api.post('/stocks/vaccines', payload)
     vaccines.value = [data, ...vaccines.value]
-    form.value = { name: '', default_dose: null, unit: '', methods: [], otherMethod: '', current_stock: null }
+    form.value = { name: '', default_dose: null, unit: '', methods: [], otherMethod: '', current_stock: null, notes: '' }
     createOpen.value = false
   } catch (e) {
     alert(e?.response?.data?.detail || e.message || 'Create failed')
@@ -125,11 +127,12 @@ function openWasteDialog(item) {
 async function recordWaste() {
   try {
     const payload = {
+      vaccine_id: wasteForm.value.vaccine_id,
       amount: Number(wasteForm.value.amount) || 0,
       date: wasteForm.value.date,
       reason: wasteForm.value.reason || '',
     }
-    await api.post(`/stocks/vaccines/${wasteForm.value.vaccine_id}/waste`, payload)
+    await api.post('/stocks/vaccines/waste', payload)
     await fetchVaccines()
     wasteDialogOpen.value = false
   } catch (e) {
@@ -172,6 +175,27 @@ async function saveFeedEdit() {
     alert(e?.response?.data?.detail || e.message || 'Update failed')
   }
 }
+const confirmFeedDelete = ref(false)
+const toFeedDelete = ref(null)
+const deletingFeed = ref(false)
+
+function askFeedDelete(item) {
+  toFeedDelete.value = item
+  confirmFeedDelete.value = true
+}
+async function doFeedDelete() {
+  try {
+    deletingFeed.value = true
+    await api.delete(`/stocks/feeds/${toFeedDelete.value.id}`)
+    feedsView.value = feedsView.value.filter(x => x.id !== toFeedDelete.value.id)
+    confirmFeedDelete.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Delete failed')
+  } finally {
+    deletingFeed.value = false
+  }
+}
+
 
 // --- Mix Feed Dialog ---
 const mixDialogOpen = ref(false)
@@ -189,7 +213,11 @@ function openMixDialog() {
 async function recordMix() {
   try {
     const payload = {
-      components: Object.fromEntries(mixForm.value.components.map(c => [c.feed_id, Number(c.amount)])),
+      components: Object.fromEntries(
+        mixForm.value.components
+          .filter(c => c.feed_id && c.amount)
+          .map(c => [c.feed_id, Number(c.amount)])
+      ),
       output_feed_id: mixForm.value.output_feed_id,
       output_amount: Number(mixForm.value.output_amount) || 0,
       date: mixForm.value.date,
@@ -236,6 +264,26 @@ async function saveFertEdit() {
     fertEditOpen.value = false
   } catch (e) {
     alert(e?.response?.data?.detail || e.message || 'Update failed')
+  }
+}
+const confirmFertDelete = ref(false)
+const toFertDelete = ref(null)
+const deletingFert = ref(false)
+
+function askFertDelete(item) {
+  toFertDelete.value = item
+  confirmFertDelete.value = true
+}
+async function doFertDelete() {
+  try {
+    deletingFert.value = true
+    await api.delete(`/stocks/fertilisers/${toFertDelete.value.id}`)
+    fertilisersView.value = fertilisersView.value.filter(x => x.id !== toFertDelete.value.id)
+    confirmFertDelete.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Delete failed')
+  } finally {
+    deletingFert.value = false
   }
 }
 
@@ -298,6 +346,27 @@ async function saveFuelEdit() {
   }
 }
 
+const confirmFuelDelete = ref(false)
+const toFuelDelete = ref(null)
+const deletingFuel = ref(false)
+
+function askFuelDelete(item) {
+  toFuelDelete.value = item
+  confirmFuelDelete.value = true
+}
+async function doFuelDelete() {
+  try {
+    deletingFuel.value = true
+    await api.delete(`/stocks/fuels/${toFuelDelete.value.id}`)
+    fuelView.value = fuelView.value.filter(x => x.id !== toFuelDelete.value.id)
+    confirmFuelDelete.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Delete failed')
+  } finally {
+    deletingFuel.value = false
+  }
+}
+
 // --- Fuel Event Dialog ---
 const fuelEventDialogOpen = ref(false)
 const fuelEventForm = ref({ amount: null, date: '', reason: '', fuel_id: null, event_type: 'out' })
@@ -318,6 +387,163 @@ async function recordFuelEvent() {
     fuelEventDialogOpen.value = false
   } catch (e) {
     alert(e?.response?.data?.detail || e.message || 'Event failed')
+  }
+}
+
+// --- Stocktake State ---
+const vaccineStocktakeDialogOpen = ref(false)
+const vaccineStocktakeForm = ref({ vaccine_id: null, recorded_stock: null, date: '', notes: '' })
+const lastVaccineStocktakes = ref({}) // { [vaccine_id]: { recorded_stock, date, notes } }
+
+const feedStocktakeDialogOpen = ref(false)
+const feedStocktakeForm = ref({ feed_id: null, recorded_stock: null, date: '', notes: '' })
+const lastFeedStocktakes = ref({}) // { [feed_id]: { recorded_stock, date, notes } }
+
+const fertStocktakeDialogOpen = ref(false)
+const fertStocktakeForm = ref({ fertiliser_id: null, recorded_stock: null, date: '', notes: '' })
+const lastFertStocktakes = ref({}) // { [fertiliser_id]: { recorded_stock, date, notes } }
+
+const fuelStocktakeDialogOpen = ref(false)
+const fuelStocktakeForm = ref({ fuel_id: null, recorded_stock: null, date: '', notes: '' })
+const lastFuelStocktakes = ref({}) // { [fuel_id]: { recorded_stock, date, notes } }
+
+async function fetchLastStocktakes() {
+  const { data } = await api.get('/history')
+  // Vaccines
+  const vaccineStocktakes = data.filter(e => e.type === 'vaccine_stocktake')
+  const latestVax = {}
+  for (const s of vaccineStocktakes) {
+    // Always pick the event with the latest date
+    if (
+      !latestVax[s.item_id] ||
+      new Date(s.date) > new Date(latestVax[s.item_id].date)
+    ) {
+      latestVax[s.item_id] = s
+    }
+  }
+  lastVaccineStocktakes.value = latestVax
+
+  // Feeds
+  const feedStocktakes = data.filter(e => e.type === 'feed_stocktake')
+  const latestFeed = {}
+  for (const s of feedStocktakes) {
+    if (
+      !latestFeed[s.item_id] ||
+      new Date(s.date) > new Date(latestFeed[s.item_id].date)
+    ) {
+      latestFeed[s.item_id] = s
+    }
+  }
+  lastFeedStocktakes.value = latestFeed
+
+  // Fertilisers
+  const fertStocktakes = data.filter(e => e.type === 'fertiliser_stocktake')
+  const latestFert = {}
+  for (const s of fertStocktakes) {
+    if (
+      !latestFert[s.item_id] ||
+      new Date(s.date) > new Date(latestFert[s.item_id].date)
+    ) {
+      latestFert[s.item_id] = s
+    }
+  }
+  lastFertStocktakes.value = latestFert
+
+  // Fuels
+  const fuelStocktakes = data.filter(e => e.type === 'fuel_stocktake')
+  const latestFuel = {}
+  for (const s of fuelStocktakes) {
+    if (
+      !latestFuel[s.item_id] ||
+      new Date(s.date) > new Date(latestFuel[s.item_id].date)
+    ) {
+      latestFuel[s.item_id] = s
+    }
+  }
+  lastFuelStocktakes.value = latestFuel
+}
+
+// --- Open Stocktake Dialogs ---
+function openVaccineStocktakeDialog(item) {
+  vaccineStocktakeForm.value = {
+    vaccine_id: item.id,
+    recorded_stock: item.current_stock,
+    date: new Date().toISOString().slice(0, 10),
+    notes: ''
+  }
+  vaccineStocktakeDialogOpen.value = true
+}
+function openFeedStocktakeDialog(item) {
+  feedStocktakeForm.value = {
+    feed_id: item.id,
+    recorded_stock: item.current_stock,
+    date: new Date().toISOString().slice(0, 10),
+    notes: ''
+  }
+  feedStocktakeDialogOpen.value = true
+}
+function openFertStocktakeDialog(item) {
+  fertStocktakeForm.value = {
+    fertiliser_id: item.id,
+    recorded_stock: item.current_stock,
+    date: new Date().toISOSt.slice(0, 10),
+    notes: ''
+  }
+  fertStocktakeDialogOpen.value = true
+}
+function openFuelStocktakeDialog(item) {
+  fuelStocktakeForm.value = {
+    fuel_id: item.id,
+    recorded_stock: item.current_stock,
+    date: new Date().toISOString().slice(0, 10),
+    notes: ''
+  }
+  fuelStocktakeDialogOpen.value = true
+}
+
+// --- Record Stocktake ---
+async function recordVaccineStocktake() {
+  try {
+    const payload = { ...vaccineStocktakeForm.value }
+    await api.post(`/stocks/vaccines/${payload.vaccine_id}/stocktake`, payload)
+    await fetchVaccines()
+    await fetchLastStocktakes()
+    vaccineStocktakeDialogOpen.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Failed to record stocktake')
+  }
+}
+async function recordFeedStocktake() {
+  try {
+    const payload = { ...feedStocktakeForm.value }
+    await api.post(`/stocks/feeds/${payload.feed_id}/stocktake`, payload)
+    await fetchFeeds()
+    await fetchLastStocktakes()
+    feedStocktakeDialogOpen.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Failed to record stocktake')
+  }
+}
+async function recordFertStocktake() {
+  try {
+    const payload = { ...fertStocktakeForm.value }
+    await api.post(`/stocks/fertilisers/${payload.fertiliser_id}/stocktake`, payload)
+    await fetchFertilisers()
+    await fetchLastStocktakes()
+    fertStocktakeDialogOpen.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Failed to record stocktake')
+  }
+}
+async function recordFuelStocktake() {
+  try {
+    const payload = { ...fuelStocktakeForm.value }
+    await api.post(`/stocks/fuels/${payload.fuel_id}/stocktake`, payload)
+    await fetchFuel()
+    await fetchLastStocktakes()
+    fuelStocktakeDialogOpen.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Failed to record stocktake')
   }
 }
 
@@ -346,6 +572,7 @@ async function loadAll() {
     await fetchFeeds()
     await fetchFertilisers()
     await fetchFuel()
+    await fetchLastStocktakes()
   } catch (e) {
     errorMsg.value = e?.response?.data?.detail || e.message || 'Failed to load stocks'
     console.error(e)
@@ -356,19 +583,124 @@ async function loadAll() {
 
 onMounted(loadAll)
 
-// Derived
+// --- Comparison columns for tables ---
 const vaccinesView = computed(() => {
   const needle = search.value.trim().toLowerCase()
-  return vaccines.value.filter(v =>
+  return vaccines.value.map(v => ({
+    ...v,
+    last_stocktake: lastVaccineStocktakes.value[v.id]?.amount ?? null,
+    last_stocktake_date: lastVaccineStocktakes.value[v.id]?.date ?? null,
+    stock_diff: lastVaccineStocktakes.value[v.id]
+      ? (lastVaccineStocktakes.value[v.id].amount - v.current_stock)
+      : null
+  })).filter(v =>
     !needle ? true : (v.name || '').toLowerCase().includes(needle)
   )
 })
+const feedsViewWithStocktake = computed(() => {
+  return feedsView.value.map(f => ({
+    ...f,
+    last_stocktake: lastFeedStocktakes.value[f.id]?.amount ?? null,
+    last_stocktake_date: lastFeedStocktakes.value[f.id]?.date ?? null,
+    stock_diff: lastFeedStocktakes.value[f.id]
+      ? (lastFeedStocktakes.value[f.id].amount - f.current_stock)
+      : null
+  }))
+})
+const fertilisersViewWithStocktake = computed(() => {
+  return fertilisersView.value.map(f => ({
+    ...f,
+    last_stocktake: lastFertStocktakes.value[f.id]?.amount ?? null,
+    last_stocktake_date: lastFertStocktakes.value[f.id]?.date ?? null,
+    stock_diff: lastFertStocktakes.value[f.id]
+      ? (lastFertStocktakes.value[f.id].amount - f.current_stock)
+      : null
+  }))
+})
+const fuelViewWithStocktake = computed(() => {
+  return fuelView.value.map(f => ({
+    ...f,
+    last_stocktake: lastFuelStocktakes.value[f.id]?.amount ?? null,
+    last_stocktake_date: lastFuelStocktakes.value[f.id]?.date ?? null,
+    stock_diff: lastFuelStocktakes.value[f.id]
+      ? (lastFuelStocktakes.value[f.id].amount - f.current_stock)
+      : null
+  }))
+})
+
+// Universal manual stocktake dialog state
+const universalStocktakeDialogOpen = ref(false)
+const universalStocktakeForm = ref({
+  type: '', // 'vaccine' | 'feed' | 'fertiliser' | 'fuel'
+  item_id: null,
+  recorded_stock: null,
+  date: new Date().toISOString().slice(0, 10),
+  notes: ''
+})
+
+// For dropdown options
+const stockOptions = computed(() => [
+  ...vaccines.value.map(v => ({ type: 'vaccine', id: v.id, name: v.name })),
+  ...feedsView.value.map(f => ({ type: 'feed', id: f.id, name: f.name })),
+  ...fertilisersView.value.map(f => ({ type: 'fertiliser', id: f.id, name: f.name })),
+  ...fuelView.value.map(f => ({ type: 'fuel', id: f.id, name: f.type })),
+])
+
+function openUniversalStocktakeDialog() {
+  universalStocktakeForm.value = {
+    type: '',
+    item_id: null,
+    recorded_stock: null,
+    date: new Date().toISOString().slice(0, 10),
+    notes: ''
+  }
+  universalStocktakeDialogOpen.value = true
+}
+
+async function recordUniversalStocktake() {
+  const { type, item_id, recorded_stock, date, notes } = universalStocktakeForm.value
+  let endpoint = ''
+  let payload = {}
+  if (type === 'vaccine') {
+    endpoint = `/stocks/vaccines/${item_id}/stocktake`
+    payload = { vaccine_id: item_id, recorded_stock, date, notes }
+  } else if (type === 'feed') {
+    endpoint = `/stocks/feeds/${item_id}/stocktake`
+    payload = { feed_id: item_id, recorded_stock, date, notes }
+  } else if (type === 'fertiliser') {
+    endpoint = `/stocks/fertilisers/${item_id}/stocktake`
+    payload = { fertiliser_id: item_id, recorded_stock, date, notes }
+  } else if (type === 'fuel') {
+    endpoint = `/stocks/fuels/${item_id}/stocktake`
+    payload = { fuel_id: item_id, recorded_stock, date, notes }
+  } else {
+    alert('Please select a stock type and item.')
+    return
+  }
+  try {
+    await api.post(endpoint, payload)
+    await loadAll()
+    universalStocktakeDialogOpen.value = false
+  } catch (e) {
+    alert(e?.response?.data?.detail || e.message || 'Failed to record stocktake')
+  }
+}
+
+const filteredStockOptions = computed(() =>
+  (stockOptions.value ?? []).filter(opt => opt.type === universalStocktakeForm.value.type)
+)
+
 </script>
 
-<template>
-  <v-container class="py-8" max-width="1100">
+<template>   
+  <v-container class="py-8" fluid>
     <h1 class="text-h5 mb-4">Stocks</h1>
     <v-alert v-if="errorMsg" type="error" class="mb-4">{{ errorMsg }}</v-alert>
+
+    <!-- Manual Stocktake Button -->
+    <v-btn color="secondary" class="mb-4" @click="universalStocktakeDialogOpen = true">
+      Manual Stocktake
+    </v-btn>
 
     <!-- Vaccines Table -->
     <v-card class="mb-4">
@@ -378,6 +710,7 @@ const vaccinesView = computed(() => {
         <v-btn class="ml-2" color="primary" @click="createOpen = true">New vaccine</v-btn>
       </v-card-title>
       <v-data-table
+      style="min-width:1800px"
         :items="vaccinesView"
         :headers="[
           { title:'Name', value:'name' },
@@ -385,8 +718,12 @@ const vaccinesView = computed(() => {
           { title:'Unit', value:'unit' },
           { title:'Methods', value:'methods' },
           { title:'In stock', value:'current_stock' },
-          { title:'Waste', value:'waste' },
-          { title:'Actions', value:'actions', sortable:false },
+          { title:'Last stocktake', value:'last_stocktake' },
+          { title:'Stocktake date', value:'last_stocktake_date' },
+          { title:'Difference', value:'stock_diff' },
+          { title:'Notes', value: 'notes' },
+          { title:'Waste', value:'waste', width: '120px' },
+          { title:'Actions', value:'actions', sortable:false, width: '220px' },
         ]"
         :items-per-page="25"
         :loading="loading"
@@ -395,12 +732,25 @@ const vaccinesView = computed(() => {
           <span v-if="Array.isArray(item.methods)">{{ item.methods.join(', ') }}</span>
           <span v-else>{{ item.methods }}</span>
         </template>
+        <template #item.last_stocktake="{ item }">
+          <span v-if="item.last_stocktake !== null">{{ item.last_stocktake }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.last_stocktake_date="{ item }">
+          <span v-if="item.last_stocktake_date">{{ item.last_stocktake_date.split('T')[0] }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.stock_diff="{ item }">
+          <span v-if="item.stock_diff !== null">{{ item.stock_diff.toFixed(2) }}</span>
+          <span v-else>—</span>
+        </template>
         <template #item.waste="{ item }">
           <v-btn size="small" @click="openWasteDialog(item)">Record waste</v-btn>
         </template>
         <template #item.actions="{ item }">
-          <v-btn size="small" variant="text" @click="openEdit(item)">Edit</v-btn>
-          <v-btn size="small" variant="text" color="error" @click="askDelete(item)">Delete</v-btn>
+          <v-btn variant="text" @click="openEdit(item)">Edit</v-btn>
+          <v-btn variant="text" color="error" @click="askDelete(item)">Delete</v-btn>
+          <v-btn variant="text" color="secondary" @click="openVaccineStocktakeDialog(item)">Stocktake</v-btn>
         </template>
       </v-data-table>
     </v-card>
@@ -414,37 +764,20 @@ const vaccinesView = computed(() => {
             <v-text-field v-model="form.name" label="Name" />
             <v-text-field v-model.number="form.default_dose" label="Default Dose" type="number" />
             <v-text-field v-model="form.unit" label="Unit" />
-            <v-dialog v-model="createOpen" max-width="520">
-              <v-card>
-                <v-card-title>New Vaccine</v-card-title>
-                <v-card-text>
-                  <v-form @submit.prevent="createVaccine">
-                    <v-text-field v-model="form.name" label="Name" />
-                    <v-text-field v-model.number="form.default_dose" label="Default Dose" type="number" />
-                    <v-text-field v-model="form.unit" label="Unit" />
-                    <v-select
-                      v-model="form.methods"
-                      :items="['subcut', 'intramuscular', 'other']"
-                      label="Method"
-                      multiple
-                      @update:modelValue="onMethodChange"
-                    />
-                    <v-text-field
-                      v-if="form.methods && form.methods.includes('other')"
-                      v-model="form.otherMethod"
-                      label="Specify other method"
-                    />
-                    <v-text-field v-model.number="form.current_stock" label="Starting Stock" type="number" />
-                  </v-form>
-                </v-card-text>
-                <v-card-actions>
-                  <v-spacer />
-                  <v-btn variant="text" @click="createOpen=false">Cancel</v-btn>
-                  <v-btn color="primary" :loading="creating" @click="createVaccine">Create</v-btn>
-                </v-card-actions>
-              </v-card>
-            </v-dialog>
+            <v-select
+              v-model="form.methods"
+              :items="['subcut', 'intramuscular', 'other']"
+              label="Method"
+              multiple
+              @update:modelValue="onMethodChange"
+            />
+            <v-text-field
+              v-if="form.methods && form.methods.includes('other')"
+              v-model="form.otherMethod"
+              label="Specify other method"
+            />
             <v-text-field v-model.number="form.current_stock" label="Starting Stock" type="number" />
+            <v-textarea v-model="form.notes" label="Notes" />
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -477,6 +810,7 @@ const vaccinesView = computed(() => {
               label="Specify other method"
             />
             <v-text-field v-model.number="editForm.current_stock" label="Stock" type="number" />
+            <v-textarea v-model="editForm.notes" label="Notes" />
           </v-form>
         </v-card-text>
         <v-card-actions>
@@ -528,17 +862,34 @@ const vaccinesView = computed(() => {
         <v-btn color="secondary" @click="openMixDialog">Mix feed</v-btn>
       </v-card-title>
       <v-data-table
-        :items="feedsView"
+        :items="feedsViewWithStocktake"
         :headers="[
           { title:'Name', value:'name' },
           { title:'Unit', value:'unit' },
           { title:'In stock', value:'current_stock' },
+          { title:'Last stocktake', value:'last_stocktake' },
+          { title:'Stocktake date', value:'last_stocktake_date' },
+          { title:'Difference', value:'stock_diff' },
           { title:'Actions', value:'actions', sortable:false },
         ]"
         :items-per-page="15"
       >
+        <template #item.last_stocktake="{ item }">
+          <span v-if="item.last_stocktake !== null">{{ item.last_stocktake }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.last_stocktake_date="{ item }">
+          <span v-if="item.last_stocktake_date">{{ item.last_stocktake_date.split('T')[0] }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.stock_diff="{ item }">
+          <span v-if="item.stock_diff !== null">{{ item.stock_diff.toFixed(2) }}</span>
+          <span v-else>—</span>
+        </template>
         <template #item.actions="{ item }">
           <v-btn variant="text" @click="openFeedEdit(item)">Edit</v-btn>
+          <v-btn variant="text" color="error" @click="askFeedDelete(item)">Delete</v-btn>
+          <v-btn variant="text" color="secondary" @click="openFeedStocktakeDialog(item)">Stocktake</v-btn>
         </template>
       </v-data-table>
     </v-card>
@@ -579,6 +930,21 @@ const vaccinesView = computed(() => {
           <v-spacer />
           <v-btn variant="text" @click="feedEditOpen=false">Cancel</v-btn>
           <v-btn color="primary" @click="saveFeedEdit">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Feed Delete Dialog -->
+    <v-dialog v-model="confirmFeedDelete" max-width="420">
+      <v-card>
+        <v-card-title>Delete Feed?</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete <strong>{{ toFeedDelete?.name }}</strong>?
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmFeedDelete=false">Cancel</v-btn>
+          <v-btn color="error" :loading="deletingFeed" @click="doFeedDelete">Delete</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -647,17 +1013,34 @@ const vaccinesView = computed(() => {
         <v-btn color="primary" @click="openFertCreate">New fertiliser</v-btn>
       </v-card-title>
       <v-data-table
-        :items="fertilisersView"
+        :items="fertilisersViewWithStocktake"
         :headers="[
           { title:'Name', value:'name' },
           { title:'Unit', value:'unit' },
           { title:'In stock', value:'current_stock' },
+          { title:'Last stocktake', value:'last_stocktake' },
+          { title:'Stocktake date', value:'last_stocktake_date' },
+          { title:'Difference', value:'stock_diff' },
           { title:'Actions', value:'actions', sortable:false },
         ]"
         :items-per-page="15"
       >
+        <template #item.last_stocktake="{ item }">
+          <span v-if="item.last_stocktake !== null">{{ item.last_stocktake }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.last_stocktake_date="{ item }">
+          <span v-if="item.last_stocktake_date">{{ item.last_stocktake_date.split('T')[0] }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.stock_diff="{ item }">
+          <span v-if="item.stock_diff !== null">{{ item.stock_diff.toFixed(2) }}</span>
+          <span v-else>—</span>
+        </template>
         <template #item.actions="{ item }">
           <v-btn variant="text" @click="openFertEdit(item)">Edit</v-btn>
+          <v-btn variant="text" color="error" @click="askFertDelete(item)">Delete</v-btn>
+          <v-btn variant="text" color="secondary" @click="openFertStocktakeDialog(item)">Stocktake</v-btn>
           <v-btn variant="text" color="secondary" @click="openFertEvent(item)">Record event</v-btn>
         </template>
       </v-data-table>
@@ -703,6 +1086,21 @@ const vaccinesView = computed(() => {
       </v-card>
     </v-dialog>
 
+    <!-- Fertiliser Delete Dialog -->
+    <v-dialog v-model="confirmFertDelete" max-width="420">
+      <v-card>
+        <v-card-title>Delete Fertiliser?</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete <strong>{{ toFertDelete?.name }}</strong>?
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmFertDelete=false">Cancel</v-btn>
+          <v-btn color="error" :loading="deletingFert" @click="doFertDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Fertiliser Event Dialog -->
     <v-dialog v-model="fertEventDialogOpen" max-width="520">
       <v-card>
@@ -730,17 +1128,34 @@ const vaccinesView = computed(() => {
         <v-btn color="primary" @click="openFuelCreate">New fuel</v-btn>
       </v-card-title>
       <v-data-table
-        :items="fuelView"
+        :items="fuelViewWithStocktake"
         :headers="[
           { title:'Type', value:'type' },
           { title:'Unit', value:'unit' },
           { title:'In stock', value:'current_stock' },
+          { title:'Last stocktake', value:'last_stocktake' },
+          { title:'Stocktake date', value:'last_stocktake_date' },
+          { title:'Difference', value:'stock_diff' },
           { title:'Actions', value:'actions', sortable:false },
         ]"
         :items-per-page="15"
       >
+        <template #item.last_stocktake="{ item }">
+          <span v-if="item.last_stocktake !== null">{{ item.last_stocktake }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.last_stocktake_date="{ item }">
+          <span v-if="item.last_stocktake_date">{{ item.last_stocktake_date.split('T')[0] }}</span>
+          <span v-else>—</span>
+        </template>
+        <template #item.stock_diff="{ item }">
+          <span v-if="item.stock_diff !== null">{{ item.stock_diff.toFixed(2) }}</span>
+          <span v-else>—</span>
+        </template>
         <template #item.actions="{ item }">
           <v-btn variant="text" @click="openFuelEdit(item)">Edit</v-btn>
+          <v-btn variant="text" color="error" @click="askFuelDelete(item)">Delete</v-btn>
+          <v-btn variant="text" color="secondary" @click="openFuelStocktakeDialog(item)">Stocktake</v-btn>
           <v-btn variant="text" color="secondary" @click="openFuelEvent(item)">Record event</v-btn>
         </template>
       </v-data-table>
@@ -786,6 +1201,21 @@ const vaccinesView = computed(() => {
       </v-card>
     </v-dialog>
 
+    <!-- Fuel Delete Dialog -->
+    <v-dialog v-model="confirmFuelDelete" max-width="420">
+      <v-card>
+        <v-card-title>Delete Fuel?</v-card-title>
+        <v-card-text>
+          Are you sure you want to delete <strong>{{ toFuelDelete?.name }}</strong>?
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="confirmFuelDelete=false">Cancel</v-btn>
+          <v-btn color="error" :loading="deletingFuel" @click="doFuelDelete">Delete</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Fuel Event Dialog -->
     <v-dialog v-model="fuelEventDialogOpen" max-width="520">
       <v-card>
@@ -801,6 +1231,107 @@ const vaccinesView = computed(() => {
           <v-spacer />
           <v-btn variant="text" @click="fuelEventDialogOpen=false">Cancel</v-btn>
           <v-btn color="primary" @click="recordFuelEvent">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Vaccine Stocktake Dialog -->
+    <v-dialog v-model="vaccineStocktakeDialogOpen" max-width="420">
+      <v-card>
+        <v-card-title>Manual Vaccine Stocktake</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.number="vaccineStocktakeForm.recorded_stock" label="Counted Stock" type="number" />
+          <v-text-field v-model="vaccineStocktakeForm.date" label="Date" type="date" />
+          <v-textarea v-model="vaccineStocktakeForm.notes" label="Notes" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="vaccineStocktakeDialogOpen=false">Cancel</v-btn>
+          <v-btn color="primary" @click="recordVaccineStocktake">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Feed Stocktake Dialog -->
+    <v-dialog v-model="feedStocktakeDialogOpen" max-width="420">
+      <v-card>
+        <v-card-title>Manual Feed Stocktake</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.number="feedStocktakeForm.recorded_stock" label="Counted Stock" type="number" />
+          <v-text-field v-model="feedStocktakeForm.date" label="Date" type="date" />
+          <v-textarea v-model="feedStocktakeForm.notes" label="Notes" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="feedStocktakeDialogOpen=false">Cancel</v-btn>
+          <v-btn color="primary" @click="recordFeedStocktake">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Fertiliser Stocktake Dialog -->
+    <v-dialog v-model="fertStocktakeDialogOpen" max-width="420">
+      <v-card>
+        <v-card-title>Manual Fertiliser Stocktake</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.number="fertStocktakeForm.recorded_stock" label="Counted Stock" type="number" />
+          <v-text-field v-model="fertStocktakeForm.date" label="Date" type="date" />
+          <v-textarea v-model="fertStocktakeForm.notes" label="Notes" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="fertStocktakeDialogOpen=false">Cancel</v-btn>
+          <v-btn color="primary" @click="recordFertStocktake">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Fuel Stocktake Dialog -->
+    <v-dialog v-model="fuelStocktakeDialogOpen" max-width="420">
+      <v-card>
+        <v-card-title>Manual Fuel Stocktake</v-card-title>
+        <v-card-text>
+          <v-text-field v-model.number="fuelStocktakeForm.recorded_stock" label="Counted Stock" type="number" />
+          <v-text-field v-model="fuelStocktakeForm.date" label="Date" type="date" />
+          <v-textarea v-model="fuelStocktakeForm.notes" label="Notes" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="fuelStocktakeDialogOpen=false">Cancel</v-btn>
+          <v-btn color="primary" @click="recordFuelStocktake">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+
+    <!-- Manual Stocktake Dialog -->
+    <v-dialog v-model="universalStocktakeDialogOpen" max-width="420">
+      <v-card>
+        <v-card-title>Manual Stocktake</v-card-title>
+        <v-card-text>
+          <v-select
+            v-model="universalStocktakeForm.type"
+            :items="['vaccine', 'feed', 'fertiliser', 'fuel']"
+            label="Stock Type"
+            required
+          />
+          <v-select
+            v-model="universalStocktakeForm.item_id"
+            :items="filteredStockOptions"
+            item-title="name"
+            item-value="id"
+            label="Component"
+            :disabled="!universalStocktakeForm.type"
+            required
+          />
+          <v-text-field v-model.number="universalStocktakeForm.recorded_stock" label="Counted Stock" type="number" />
+          <v-text-field v-model="universalStocktakeForm.date" label="Date" type="date" />
+          <v-textarea v-model="universalStocktakeForm.notes" label="Notes" />
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="universalStocktakeDialogOpen=false">Cancel</v-btn>
+          <v-btn color="primary" @click="recordUniversalStocktake">Record</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

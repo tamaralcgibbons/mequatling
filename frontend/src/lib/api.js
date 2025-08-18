@@ -10,7 +10,7 @@ const apiBase =
         : window.location.origin))
 
 const api = axios.create({
-  baseURL: apiBase,
+  baseURL: 'http://localhost:8001/api',
   timeout: 15000,
   withCredentials: false,               // set true only if you use cookies
   headers: { 'Content-Type': 'application/json' },

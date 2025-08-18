@@ -59,3 +59,16 @@ class VaccineWasteEventOut(VaccineWasteEventIn):
 
     class Config:
         orm_mode = True
+
+# --- Vaccine Stocktake Event schemas ---
+class VaccineStocktakeEventIn(BaseModel):
+    vaccine_id: int
+    recorded_stock: float
+    date: datetime
+    notes: Optional[str] = None
+
+class VaccineStocktakeEventOut(VaccineStocktakeEventIn):
+    id: int
+
+    class Config:
+        orm_mode = True

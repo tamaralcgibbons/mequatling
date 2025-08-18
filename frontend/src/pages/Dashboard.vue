@@ -43,6 +43,8 @@ async function load() {
   }
 }
 
+const dashboardNotes = ref('')
+
 onMounted(load)
 </script>
 
@@ -54,7 +56,10 @@ onMounted(load)
 
     <!-- Herd overview -->
     <v-card class="mb-6">
-      <v-card-title>Herd Overview</v-card-title>
+      <v-card-title class="d-flex align-center">
+        <v-icon class="mr-2">mdi-cow</v-icon>
+        Herd Overview
+      </v-card-title>
       <v-card-text>
         <v-row>
           <v-col cols="6" md="2">
@@ -100,14 +105,15 @@ onMounted(load)
     <!-- Camps overview -->
     <v-card class="mb-6">
       <v-card-title class="d-flex align-center">
-        <span>Camps Overview</span>
-        <v-spacer />
-        <v-btn variant="text" @click="load" :loading="loading">Refresh</v-btn>
+        <v-icon class="mr-2">mdi-fence</v-icon>
+        Camps Overview
       </v-card-title>
       <v-data-table
         :headers="[
           { title: 'Camp', key: 'name' },
-          { title: 'Animals', key: 'animal_count' }
+          { title: 'Group', key: 'group_name' },
+          { title: 'Animals', key: 'animal_count' },
+          { title: 'Notes', key: 'notes' }
         ]"
         :items="campRows"
         :items-per-page="10"
@@ -116,8 +122,11 @@ onMounted(load)
     </v-card>
 
     <!-- Stocks overview -->
-    <v-card>
-      <v-card-title>Stocks Overview</v-card-title>
+    <v-card class="mb-6">
+      <v-card-title class="d-flex align-center">
+        <v-icon class="mr-2">mdi-warehouse</v-icon>
+        Stocks Overview
+      </v-card-title>
       <v-card-text>
         <div class="mb-4">
           <v-chip
@@ -150,6 +159,22 @@ onMounted(load)
           />
         </div>
         <div v-else class="text-medium-emphasis">No low stock items 🎉</div>
+      </v-card-text>
+    </v-card>
+
+    <!-- Notes Section -->
+    <v-card class="mb-6">
+      <v-card-title class="d-flex align-center">
+      Notes
+      </v-card-title>
+      <v-card-text>
+        <v-textarea
+          v-model="dashboardNotes"
+          label="General notes and comments"
+          auto-grow
+          rows="3"
+          placeholder="Type notes here..."
+        />
       </v-card-text>
     </v-card>
   </v-container>

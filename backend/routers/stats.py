@@ -6,6 +6,7 @@ from backend.db import SessionLocal
 from backend.models.animal import Animal
 from backend.models.camp import Camp
 from backend.models.vaccine import Vaccine
+from backend.models.group import Group
 from datetime import date, datetime
 
 router = APIRouter(prefix="/stats", tags=["stats"])
@@ -83,8 +84,10 @@ def camps_summary(db: Session = Depends(get_db)):
         ).all()
     )
     rows = db.execute(select(Camp).order_by(Camp.name)).scalars().all()
+    groups = db.execute(select(Group)).scalars().all()
+    camp_to_group = {g.camp_id: g.name for g in groups if g.camp_id is not None}
     return [
-        {"id": c.id, "name": c.name, "animal_count": int(counts.get(c.id, 0))}
+        {"id": c.id, "name": c.name, "animal_count": int(counts.get(c.id, 0)), "group_name": camp_to_group.get(c.id, ""), "notes": c.notes}
         for c in rows
     ]
 

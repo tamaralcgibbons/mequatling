@@ -16,6 +16,7 @@ const routes = [
   { path: '/stocks', name: 'Stocks', component: Stocks },
   { path: '/groups', name: 'Groups', component: Groups },
   { path: '/vaccinations-history', name: 'VaccinationsHistory', component: VaccinationsHistory },
+  { path: '/history', name: 'History', component: () => import('@/pages/History.vue'), }
 ]
 
 const router = createRouter({

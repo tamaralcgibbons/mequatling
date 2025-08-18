@@ -32,3 +32,16 @@ class FertiliserEventOut(FertiliserEventBase):
 
     class Config:
         orm_mode = True
+
+# --- Fertiliser Stocktake Event schemas ---
+class FertiliserStocktakeEventIn(BaseModel):
+    fertiliser_id: int
+    recorded_stock: float
+    date: datetime
+    notes: Optional[str] = None
+
+class FertiliserStocktakeEventOut(FertiliserStocktakeEventIn):
+    id: int
+
+    class Config:
+        orm_mode = True

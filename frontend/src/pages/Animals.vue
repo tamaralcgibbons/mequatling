@@ -9,6 +9,11 @@ const animals = ref([])         // raw from API
 const groups = ref([])          // [{id, name, camp_id, animal_count}]
 const vaccines = ref([])        // [{id, name, default_dose, unit, methods:[]}]
 const vaccinations = ref([])    // (optional) if you show history later
+const vaccHistoryOpen = ref(false)
+const vaccHistoryAnimal = ref(null)
+const vaccHistoryRecords = ref([])
+const loadingVaccHistory = ref(false)
+const vaccHistoryError = ref('')
 
 // ===================== UI STATE =====================
 const loading = ref(false)
@@ -68,6 +73,7 @@ const deleting = ref(false)
 const deleteMode = ref('deceased')
 const killed = ref(false)
 const deathReason = ref('')
+const deathDate = ref(new Date().toISOString().slice(0, 10))
 
 // ---------- Groups: create / edit / move ----------
 const groupCreateOpen = ref(false)
@@ -99,6 +105,7 @@ const vaccGroupForm = ref({
   date: '',
   dose_per_animal: null,
   method: '',
+  notes: ''
 })
 const vaccAnimalForm = ref({
   animal_id: null,
@@ -150,7 +157,6 @@ const headers = [
   { title: 'Class', value: 'female_class' },
   { title: 'Birth date', value: 'birth_date' },
   { title: 'Age', value: 'age_label' },
-  { title: 'Pregnancy', value: 'pregnancy_status' },
   { title: 'Name', value: 'name' },
   { title: 'Camp', value: 'camp' },
   { title: 'Group', value: 'group' },
@@ -280,6 +286,21 @@ async function loadAll() {
     console.error(e)
   } finally {
     loading.value = false
+  }
+}
+async function openVaccinationHistory(animal) {
+  vaccHistoryAnimal.value = animal
+  vaccHistoryOpen.value = true
+  vaccHistoryRecords.value = []
+  vaccHistoryError.value = ''
+  loadingVaccHistory.value = true
+  try {
+    const { data } = await api.get('/vaccinations', { params: { animal_id: animal.id } })
+    vaccHistoryRecords.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    vaccHistoryError.value = e?.response?.data?.detail || e.message || 'Failed to load vaccination history'
+  } finally {
+    loadingVaccHistory.value = false
   }
 }
 
@@ -429,23 +450,21 @@ async function doDelete() {
   deleting.value = true
   try {
     if (deleteMode.value === 'hard') {
-      // permanently remove
       await api.delete(`/animals/${toDelete.value.id}`, { params: { hard: true } })
       animals.value = animals.value.filter(a => a.id !== toDelete.value.id)
     } else {
-      // move to deceased (with optional killed + reason)
       await api.post(`/animals/${toDelete.value.id}/deceased`, {
-        killed: !!killed.value,
+        killed: deleteMode.value === 'slaughtered', // true for slaughter, false for other
+        date: deathDate.value,
         reason: deathReason.value?.trim() || null,
       })
-      // refresh animals
       await fetchAnimals()
     }
     await fetchHerd()
     confirmDelete.value = false
     toDelete.value = null
   } catch (e) {
-    alert(e?.response?.data?.detail || e.message || 'Delete failed')
+    alert(e?.response?.data?.detail || e?.message || 'Delete failed')
   } finally {
     deleting.value = false
   }
@@ -604,12 +623,46 @@ async function recordAnimalVaccination() {
   }
 }
 
+async function deleteVaccination(vaccinationId) {
+  try {
+    await api.delete(`/vaccinations/${vaccinationId}`)
+    // Reload vaccinations after delete
+    if (vaccHistoryAnimal.value) {
+      await openVaccinationHistory(vaccHistoryAnimal.value)
+    }
+  } catch (e) {
+    alert(e?.response?.data?.detail || e?.message || 'Delete failed')
+  }
+}
+
+const weightHistoryOpen = ref(false)
+const weightHistoryAnimal = ref(null)
+const weightHistoryRecords = ref([])
+const loadingWeightHistory = ref(false)
+const weightHistoryError = ref('')
+
+async function openWeightHistory(animal) {
+  weightHistoryAnimal.value = animal
+  weightHistoryOpen.value = true
+  weightHistoryRecords.value = []
+  weightHistoryError.value = ''
+  loadingWeightHistory.value = true
+  try {
+    const { data } = await api.get('/weights/', { params: { animal_id: animal.id } })
+    weightHistoryRecords.value = Array.isArray(data) ? data : []
+  } catch (e) {
+    weightHistoryError.value = e?.response?.data?.detail || e.message || 'Failed to load weight history'
+  } finally {
+    loadingWeightHistory.value = false
+  }
+}
+
 // ===================== LIFECYCLE =====================
 onMounted(loadAll)
 </script>
 
 <template>
-  <v-container class="py-8" max-width="1300">
+  <v-container class="py-8" fluid>
     <h1 class="text-h5 mb-4">Animals</h1>
 
     <v-alert v-if="errorMsg" type="error" class="mb-4">{{ errorMsg }}</v-alert>
@@ -638,6 +691,7 @@ onMounted(loadAll)
               { title:'Group', value:'name' },
               { title:'Camp', value:'camp' },
               { title:'Animals', value:'count' },
+              { title:'Notes', value: 'notes' },
               { title:'Actions', value:'actions', sortable:false }
             ]"
             :items="groups.map(g => ({
@@ -659,7 +713,7 @@ onMounted(loadAll)
           <v-card-title>Vaccination Tools</v-card-title>
           <v-card-text class="text-body-2">
             Assign vaccinations to whole groups (date, dose per animal, method) from the Stocks list; stocks are adjusted on the backend.
-            You can also override or add an individual vaccination from the Animals table's “More” menu.
+            You can also override or add an individual vaccination from the animal's record on the 'Groups' page.
           </v-card-text>
           <v-card-actions>
             <v-spacer />
@@ -780,8 +834,7 @@ onMounted(loadAll)
             </template>
             <v-list density="compact">
               <v-list-item @click="openEdit(item)">Edit</v-list-item>
-              <v-list-item @click="openAnimalVaccination(item)">Record vaccination</v-list-item>
-              <v-list-item class="text-error" @click="askDelete(item)">Delete / mark deceased</v-list-item>
+              <v-list-item class="text-error" @click="askDelete(item)">Slaughter / Delete</v-list-item>
             </v-list>
           </v-menu>
         </template>
@@ -940,15 +993,23 @@ onMounted(loadAll)
         </v-card-title>
         <v-card-text>
           <v-radio-group v-model="deleteMode">
-            <v-radio label="Move to Deceased folder" value="deceased" />
+            <v-radio label="Sent to Slaughter" value="slaughtered" />
+            <v-radio label="Killed for other reasons" value="deceased" />
             <v-radio label="Permanently remove from system" value="hard" />
           </v-radio-group>
 
           <div v-if="deleteMode==='deceased'">
-            <v-switch v-model="killed" label="Killed" hide-details />
             <v-textarea
               v-model="deathReason"
-              label="Reason (optional, e.g. snake bite, injury, non-performer...)"
+              label="Reason"
+              auto-grow
+            />
+          </div>
+
+          <div v-if="deleteMode==='slaughtered'">
+            <v-textarea
+              v-model="deathReason"
+              label="Slaughter details"
               auto-grow
             />
           </div>
@@ -1110,6 +1171,13 @@ onMounted(loadAll)
                 clearable
               />
             </v-col>
+            <v-col cols="12">
+              <v-textarea
+                v-model="vaccGroupForm.notes"
+                label="Notes (optional)"
+                auto-grow
+              />
+            </v-col>
           </v-row>
           <div class="text-caption mt-2">
             Stock will be reduced by (dose per animal × number of animals in group). You can override per-animal later if needed.
@@ -1162,6 +1230,47 @@ onMounted(loadAll)
           <v-spacer />
           <v-btn variant="text" @click="vaccAnimalOpen=false">Cancel</v-btn>
           <v-btn color="primary" @click="recordAnimalVaccination" :loading="recordingVaccAnimal">Record</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+    <v-dialog v-model="vaccHistoryOpen" max-width="900">
+      <v-card>
+        <v-card-title>
+          Vaccination history for {{ vaccHistoryAnimal?.tag_number || vaccHistoryAnimal?.name || 'animal' }}
+        </v-card-title>
+        <v-card-text>
+          <v-alert v-if="vaccHistoryError" type="error">{{ vaccHistoryError }}</v-alert>
+          <v-data-table
+            v-if="vaccHistoryRecords.length"
+            :items="vaccHistoryRecords"
+            :headers="[
+              { title: 'Date', value: 'date' },
+              { title: 'Vaccine', value: 'vaccine_name' },
+              { title: 'Dose', value: 'dose' },
+              { title: 'Unit', value: 'unit' },
+              { title: 'Method', value: 'method' },
+              { title: 'Source', value: 'source' },
+              { title: 'Notes', value: 'notes' },
+              { title: 'Actions', value: 'actions', sortable: false }
+            ]"
+            :items-per-page="25"
+            :loading="loadingVaccHistory"
+          >
+            <template #item.date="{ item }">
+              {{ item.date ? item.date.split('T')[0] : '—' }}
+            </template>
+            <template #item.dose="{ item }">
+              {{ item.dose }} {{ item.unit || '' }}
+            </template>
+            <template #item.actions="{ item }">
+              <v-btn variant="text" color="error" @click="deleteVaccination(item.id)">Delete</v-btn>
+            </template>
+          </v-data-table>
+          <div v-else-if="!loadingVaccHistory" class="text-caption">No vaccination records found.</div>
+        </v-card-text>
+        <v-card-actions>
+          <v-spacer />
+          <v-btn variant="text" @click="vaccHistoryOpen = false">Close</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

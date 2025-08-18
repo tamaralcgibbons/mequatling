@@ -1,14 +1,18 @@
 # backend/models/animal.py
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Date, Boolean, Text, DateTime, ForeignKey, JSON
+    Column, Integer, String, Date, Boolean, Text, DateTime, ForeignKey, JSON, Float
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from backend.db import Base  # use the ONE shared Base
+from backend.models.weight import Weight
+from backend.models.history import AnimalHistory
 
 # JSON that works on SQLite (JSON) and Postgres (JSONB)
 JSON_COMPAT = JSON().with_variant(JSONB, "postgresql")
+
+history = relationship("AnimalHistory", back_populates="animal", cascade="all, delete-orphan")
 
 class Animal(Base):
     __tablename__ = "animals"
@@ -38,11 +42,25 @@ class Animal(Base):
     calves_tags = Column(JSON_COMPAT, nullable=False, default=list)  # list[str]
 
     # Optional direct mother link (self-referential)
-    mother_id = Column(Integer, ForeignKey("animals.id"))
+    mother_id = Column(Float, ForeignKey("animals.id"))
     mother = relationship("Animal", remote_side=[id], uselist=False)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    # Weight tracking
+    current_weight = Column(Integer, nullable=True)
+    weight_date = Column(Date, nullable=True)
+
+    # Pregnancy tracking
+    pregnant = Column(Boolean, nullable=True, default=False)
+    pregnancy_duration = Column(String(32), nullable=True)  # e.g. "2.5 months"
+    pregnancy_date = Column(Date, nullable=True)
+
+    # Weight history relationship
+    weights = relationship("Weight", back_populates="animal")
+
+    history = relationship("AnimalHistory", back_populates="animal", cascade="all, delete-orphan")
 
     def touch(self):
         self.updated_at = datetime.utcnow()

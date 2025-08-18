@@ -1,0 +1,22 @@
+from alembic import op
+import sqlalchemy as sa
+
+revision = '0010_vaccinations_table'
+down_revision = '0009_add_group_movement_events'  # Update if needed
+branch_labels = None
+depends_on = None
+
+def upgrade():
+    op.add_column('vaccinations', sa.Column('notes', sa.Text(), nullable=True))
+    op.add_column('vaccinations', sa.Column('group_id', sa.Integer(), nullable=True))
+    op.create_foreign_key(
+        'fk_vaccinations_group_id_groups',
+        'vaccinations', 'groups',
+        ['group_id'], ['id'],
+        ondelete='SET NULL'
+    )
+
+def downgrade():
+    op.drop_constraint('fk_vaccinations_group_id_groups', 'vaccinations', type_='foreignkey')
+    op.drop_column('vaccinations', 'group_id')
+    op.drop_column('vaccinations', 'notes')
